@@ -66,3 +66,12 @@ capabilities rather than becoming implicit responsibilities of this repository.
 
 See FlossWare engineering standard ADR-0024 for the contract-centric repository
 naming and layering convention.
+
+
+## Python import identity
+
+The distribution is named `flossware-loom-ai-python` to make the implementation boundary explicit.
+
+The Python import package remains `loom_ai` for compatibility with the existing Python implementation API. This import name is a language-specific implementation detail and is **not** the architectural identity or authority of the AI-domain contract.
+
+A future `loom-ai-java` or `loom-ai-erlang` implementation does not share or depend on the Python import namespace.
