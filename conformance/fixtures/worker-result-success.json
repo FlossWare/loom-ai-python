@@ -1,0 +1,22 @@
+{
+  "fixture": "worker-result-success",
+  "version": "0.1",
+  "intent": {
+    "goal": "produce a successful result",
+    "requirements": [],
+    "constraints": [],
+    "acceptance": ["result status is success"]
+  },
+  "required_semantics": {
+    "worker_result": {
+      "status": "success",
+      "output": {"value": "ok"},
+      "evidence": [{"fact": "worker completed"}]
+    },
+    "conformance": [
+      "an implementation can represent an intent without a language-specific execution plan",
+      "a worker produces a result with status, output, and evidence",
+      "success is externally observable without exposing private reasoning"
+    ]
+  }
+}
