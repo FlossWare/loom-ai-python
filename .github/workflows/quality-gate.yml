@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FlossWare/loom-ai
-          ref: ${{ github.event_name == 'pull_request' && 'refactor/move-python-implementation' || 'main' }}
+          ref: main
           path: loom-ai-contract
 
       - name: Set up Python ${{ matrix.python-version }}
