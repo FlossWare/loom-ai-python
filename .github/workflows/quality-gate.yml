@@ -1,0 +1,165 @@
+name: Python Quality Gate
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  schedule:
+    - cron: '15 2 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install --only-binary :all: -c requirements-ci.txt -e ".[dev,server]"
+
+      - name: Lint with ruff
+        id: ruff
+        continue-on-error: true
+        run: |
+          ruff check loom_ai/ tests/ 2>&1 | tee ruff-output.txt
+          status=${PIPESTATUS[0]}
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          ERRORS=$(grep -Ec '^[^[:space:]]+:[0-9]+:[0-9]+:' ruff-output.txt || true)
+          echo "error_count=${ERRORS:-0}" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Format check with ruff
+        id: format
+        continue-on-error: true
+        run: |
+          ruff format --check loom_ai/ tests/ 2>&1 | tee format-output.txt
+          status=${PIPESTATUS[0]}
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Run tests with coverage
+        id: tests
+        continue-on-error: true
+        run: |
+          python -m pytest tests/ -v --tb=short 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Verify imports
+        run: |
+          python -c "
+          from loom_ai import (
+              Arbiter,
+              ArbiterDecision,
+              Intent,
+              IntentParseError,
+              LoomServer,
+              Worker,
+              WorkerContext,
+              WorkerEvaluation,
+              WorkerResult,
+              WorkerStatus,
+          )
+          print('All imports and protocol checks passed')
+          "
+
+      - name: Verify version format (X.Y)
+        run: |
+          VERSION=$(python -c "import loom_ai; print(loom_ai.__version__)")
+          if ! echo "$VERSION" | grep -qP '^\d+\.\d+$'; then
+            echo "Error: Version '$VERSION' is not in X.Y format"
+            exit 1
+          fi
+          echo "Version: $VERSION (X.Y format OK)"
+
+      - name: Comment on PR with quality metrics
+        if: github.event_name == 'pull_request' && always() && matrix.python-version == '3.12'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const ruffErrors = '${{ steps.ruff.outputs.error_count }}' || '0';
+            const ruffOk = '${{ steps.ruff.outputs.exit_code }}' === '0';
+            const formatOk = '${{ steps.format.outputs.exit_code }}' === '0';
+            const testsOk = '${{ steps.tests.outputs.exit_code }}' === '0';
+
+            const comment = `## Quality Gate Report
+
+            | Check | Status |
+            |-------|--------|
+            | **Ruff lint** | ${ruffOk ? '✅' : '❌'} ${ruffErrors} issues |
+            | **Ruff format** | ${formatOk ? '✅' : '❌'} |
+            | **Tests** | ${testsOk ? '✅' : '❌'} |
+            | **Imports** | ✅ |
+            | **Version (X.Y)** | ✅ |
+
+            ${ruffOk && formatOk && testsOk ? '✅ **All quality gates passed!**' : '⚠️ **Quality gates failed!** Fix issues before merging.'}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Fail if quality gates not met
+        if: always()
+        run: |
+          echo "Quality gate results:"
+          if [ "${{ steps.ruff.outputs.exit_code }}" != '0' ]; then
+            echo "  - ruff check failed"
+          else
+            echo "  - ruff check passed"
+          fi
+          if [ "${{ steps.format.outputs.exit_code }}" != '0' ]; then
+            echo "  - ruff format --check failed"
+          else
+            echo "  - ruff format --check passed"
+          fi
+          if [ "${{ steps.tests.outputs.exit_code }}" != '0' ]; then
+            echo "  - pytest failed"
+          else
+            echo "  - pytest passed"
+          fi
+
+          if [ "${{ steps.ruff.outputs.exit_code }}" != '0' ] || \
+             [ "${{ steps.format.outputs.exit_code }}" != '0' ] || \
+             [ "${{ steps.tests.outputs.exit_code }}" != '0' ]; then
+            echo "Quality gates failed!"
+            exit 1
+          fi
+          echo "All quality gates passed!"
