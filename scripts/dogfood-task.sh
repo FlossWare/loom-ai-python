@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/FlossWare/loom-ai.git"
+REPO_URL="https://github.com/FlossWare/loom-ai-python.git"
 REF="${LOOM_DOGFOOD_REF:-main}"
 KEEP="${LOOM_DOGFOOD_KEEP:-0}"
 
@@ -13,17 +13,17 @@ if git rev-parse --show-toplevel >/dev/null 2>&1; then
     ROOT="$(git rev-parse --show-toplevel)"
 else
     command -v git >/dev/null 2>&1 || fail "git is required"
-    ROOT="$(mktemp -d "${TMPDIR:-/tmp}/loom-stage1.XXXXXX")/loom-ai"
+    ROOT="$(mktemp -d "${TMPDIR:-/tmp}/loom-stage1.XXXXXX")/loom-ai-python"
     trap '[[ "$KEEP" == 1 ]] || rm -rf "$(dirname "$ROOT")"' EXIT
     log "Cloning $REPO_URL@$REF"
-    git clone --quiet --depth 1 --branch "$REF" "$REPO_URL" "$ROOT" || fail "unable to clone Loom"
+    git clone --quiet --depth 1 --branch "$REF" "$REPO_URL" "$ROOT" || fail "unable to clone Loom AI Python"
 fi
 
 cd "$ROOT"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required"
 python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)' || fail "Python 3.11+ is required"
 
-log "Loom Stage 1 real-task dogfood"
+log "Loom AI Python Stage 1 real-task dogfood"
 printf 'Repository: %s\n' "$ROOT"
 printf 'Commit: %s\n' "$(git rev-parse HEAD)"
 printf 'Python: %s\n' "$(python3 --version 2>&1)"
@@ -201,7 +201,7 @@ for output in result.output:
 if not result.successful:
     raise SystemExit(f"Stage 1 failed: {result.error}")
 
-print("\nRESULT: LOOM STAGE 1 DOGFOOD PASSED")
+print("\nRESULT: LOOM AI PYTHON STAGE 1 DOGFOOD PASSED")
 PY
 
 printf '\nNOTE: Stage 1 intentionally leaves the test-only change in the checkout.\n'
