@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from loom_ai import FakeModelProvider, Intent, ModelRequest
+from loom_ai import Intent, WorkerResult, WorkerStatus
 
 
 FIXTURE = (
@@ -23,11 +23,14 @@ def test_worker_result_success_fixture_is_consumed_by_python_realization() -> No
     )
     assert intent.goal == "produce a successful result"
 
-    provider = FakeModelProvider()
-    response = provider.generate(ModelRequest(prompt="fixture", model="test-model"))
-
     expected = fixture["required_semantics"]["worker_result"]
-    assert expected["status"] == "success"
-    assert response.text
-    assert expected["output"]["value"] == "ok"
-    assert expected["evidence"][0]["fact"] == "worker completed"
+    result = WorkerResult(
+        worker_id="fixture",
+        status=WorkerStatus.SUCCESS,
+        output=expected["output"],
+        evidence=tuple(expected["evidence"]),
+    )
+
+    assert result.successful
+    assert result.output == {"value": "ok"}
+    assert result.evidence == ({"fact": "worker completed"},)
