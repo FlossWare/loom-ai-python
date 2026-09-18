@@ -40,6 +40,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout Loom AI contract
+        uses: actions/checkout@v4
+        with:
+          repository: FlossWare/loom-ai
+          ref: main
+          path: loom-ai-contract
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -72,6 +79,8 @@ jobs:
       - name: Run tests with coverage
         id: tests
         continue-on-error: true
+        env:
+          LOOM_AI_CONFORMANCE_ROOT: ${{ github.workspace }}/loom-ai-contract/conformance
         run: |
           python -m pytest tests/ -v --tb=short 2>&1 | tee test-output.txt
           status=${PIPESTATUS[0]}
