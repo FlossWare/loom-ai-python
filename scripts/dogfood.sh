@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/FlossWare/loom-ai.git"
+REPO_URL="https://github.com/FlossWare/loom-ai-python.git"
 REF="${LOOM_DOGFOOD_REF:-main}"
 KEEP="${LOOM_DOGFOOD_KEEP:-0}"
 
@@ -12,7 +12,7 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
     command -v git >/dev/null 2>&1 || fail "git is required"
     WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/loom-dogfood.XXXXXX")"
     trap '[[ "$KEEP" == 1 ]] || rm -rf "$WORKDIR"' EXIT
-    ROOT="$WORKDIR/loom-ai"
+    ROOT="$WORKDIR/loom-ai-python"
     log "Cloning $REPO_URL@$REF"
     git clone --quiet --depth 1 --branch "$REF" "$REPO_URL" "$ROOT" || fail "unable to clone Loom"
     exec env LOOM_DOGFOOD_REF="$REF" LOOM_DOGFOOD_KEEP="$KEEP" "$ROOT/scripts/dogfood.sh" "$@"
