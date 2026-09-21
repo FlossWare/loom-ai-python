@@ -6,6 +6,13 @@ owned by FlossWare/loom.
 """
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.execution_state import (
+    ExecutionState,
+    ExecutionStateCorruptError,
+    ExecutionStateError,
+    ExecutionStateStore,
+    FileExecutionStateStore,
+)
 from loom_ai.fake_model_provider import FakeModelProvider
 from loom_ai.intent import Intent, IntentParseError
 from loom_ai.model import ModelProvider, ModelRequest, ModelResponse
@@ -16,7 +23,12 @@ from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
 __all__ = [
     "Arbiter",
     "ArbiterDecision",
+    "ExecutionState",
+    "ExecutionStateCorruptError",
+    "ExecutionStateError",
+    "ExecutionStateStore",
     "FakeModelProvider",
+    "FileExecutionStateStore",
     "Intent",
     "IntentParseError",
     "LoomServer",
