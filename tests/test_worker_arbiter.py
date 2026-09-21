@@ -61,3 +61,43 @@ def test_nested_arbiter_works_as_worker() -> None:
     assert result.successful
     assert result.output[0].worker_id == "child"
     assert result.output[0].output[0].worker_id == "leaf"
+
+
+def test_failed_worker_without_follow_up_work_is_terminal_failure() -> None:
+    intent = Intent(goal="failed terminal", intent_id="intent-3")
+    context = WorkerContext(intent=intent)
+    failed = StubWorker("failed", status=WorkerStatus.FAILED)
+
+    arbiter = Arbiter(
+        [failed],
+        lambda _result, _context: WorkerEvaluation(ArbiterDecision.REPLAN),
+        worker_id="root",
+    )
+
+    result = arbiter.execute(context)
+
+    assert result.status is WorkerStatus.FAILED
+    assert not result.successful
+    assert result.error == "worker failed without subsequent recovery"
+    assert result.metadata["reason"] == "worker failed without subsequent recovery"
+
+
+def test_failed_worker_followed_by_successful_recovery_succeeds() -> None:
+    intent = Intent(goal="failed recovery", intent_id="intent-4")
+    context = WorkerContext(intent=intent)
+    failed = StubWorker("failed", status=WorkerStatus.FAILED)
+    recovered = StubWorker("recovered")
+
+    def evaluate(result, _context):
+        if result.worker_id == "failed":
+            return WorkerEvaluation(
+                ArbiterDecision.REPLAN,
+                workers=(recovered,),
+            )
+        return WorkerEvaluation(ArbiterDecision.CONTINUE)
+
+    arbiter = Arbiter([failed], evaluate, worker_id="root")
+    result = arbiter.execute(context)
+
+    assert result.successful
+    assert [item.worker_id for item in result.output] == ["failed", "recovered"]
