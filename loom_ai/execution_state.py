@@ -17,7 +17,7 @@ from typing import Any, Mapping, Protocol
 from loom_ai.intent import Intent
 
 EXECUTION_STATE_VERSION = 1
-_TERMINAL_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
+_TERMINAL_STATUSES = frozenset({"success", "failed", "cancelled"})
 
 
 class ExecutionStateError(ValueError):
@@ -43,12 +43,11 @@ class ExecutionState:
     def __post_init__(self) -> None:
         if not self.execution_id.strip():
             raise ExecutionStateError("execution_id must not be empty")
-        if self.status not in {"running", *_TERMINAL_STATUSES}:
+        if self.status not in {"running", "interrupted", *_TERMINAL_STATUSES}:
             raise ExecutionStateError(f"unsupported execution status: {self.status!r}")
         if self.representation_version != EXECUTION_STATE_VERSION:
             raise ExecutionStateError(
-                f"unsupported execution-state version: "
-                f"{self.representation_version}"
+                f"unsupported execution-state version: {self.representation_version}"
             )
 
     @property
@@ -112,7 +111,13 @@ class FileExecutionStateStore:
         try:
             payload = json.loads(data.decode("utf-8"))
             return _execution_from_dict(payload, expected_id=execution_id)
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, KeyError, ValueError) as exc:
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            TypeError,
+            KeyError,
+            ValueError,
+        ) as exc:
             raise ExecutionStateCorruptError(
                 f"durable state for execution {execution_id!r} is corrupt"
             ) from exc
@@ -142,9 +147,7 @@ def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
     }
 
 
-def _execution_from_dict(
-    payload: Any, *, expected_id: str
-) -> ExecutionState:
+def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
     if not isinstance(payload, dict):
         raise TypeError("execution state must be a JSON object")
     if payload.get("representation_version") != EXECUTION_STATE_VERSION:
