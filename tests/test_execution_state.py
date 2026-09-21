@@ -81,7 +81,7 @@ def test_unsupported_status_is_rejected() -> None:
         build_state(status="unknown")
 
 
-def test_interruption_is_not_success() -> None:
+def test_interruption_is_incomplete_and_not_success() -> None:
     state = build_state(status="interrupted")
 
     assert not state.terminal
