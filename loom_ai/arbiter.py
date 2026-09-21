@@ -91,7 +91,7 @@ class Arbiter:
 
             index += 1
 
-        return self._result(outputs, evidence, "complete")
+        if outputs and outputs[-1].status is WorkerStatus.FAILED:\n            return self._result(\n                outputs,\n                evidence,\n                "failed",\n                "worker failed without subsequent recovery",\n            )\n\n        return self._result(outputs, evidence, "complete")
 
     def _result(
         self,
