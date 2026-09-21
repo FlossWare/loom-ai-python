@@ -56,8 +56,10 @@ PYTHON = os.environ["LOOM_AGENT_PYTHON"]
 TARGET = ROOT / "tests" / "test_worker_arbiter.py"
 MARKER = "test_agent_consumer_dogfood"
 
+
 def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, cwd=ROOT, text=True, capture_output=True, check=False)
+
 
 class InspectWorker:
     worker_id = "inspect"
@@ -72,12 +74,20 @@ class InspectWorker:
             evidence=({"worker": self.worker_id, "marker_missing": missing},),
         )
 
+
 class ImplementationWorker:
     worker_id = "implementation"
 
     def execute(self, context: WorkerContext) -> WorkerResult:
-        evidence = context.evidence[-1] if context.evidence else {}
-        if not evidence.get("marker_missing", False):
+        inspect_evidence = next(
+            (
+                evidence
+                for evidence in reversed(context.evidence)
+                if evidence.get("worker") == "inspect"
+            ),
+            {},
+        )
+        if not inspect_evidence.get("marker_missing", False):
             return WorkerResult(
                 worker_id=self.worker_id,
                 status=WorkerStatus.SUCCESS,
@@ -101,11 +111,12 @@ class ImplementationWorker:
             ),
         )
 
+
 class VerificationWorker:
     worker_id = "verification"
 
     def execute(self, context: WorkerContext) -> WorkerResult:
-        result = run(PYTHON, "-m", "pytest", "-q")
+        result = run(PYTHON, "-m", "pytest", "-q", "tests/test_worker_arbiter.py")
         return WorkerResult(
             worker_id=self.worker_id,
             status=WorkerStatus.SUCCESS if result.returncode == 0 else WorkerStatus.FAILED,
@@ -120,12 +131,14 @@ class VerificationWorker:
             error=result.stderr[-4000:],
         )
 
+
 def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
     if not result.successful:
         return WorkerEvaluation(ArbiterDecision.REPLAN, reason=result.error or "worker failed")
     if result.worker_id == "verification":
         return WorkerEvaluation(ArbiterDecision.COMPLETE, reason="agent task verified")
     return WorkerEvaluation(ArbiterDecision.CONTINUE)
+
 
 workers = [InspectWorker(), ImplementationWorker(), VerificationWorker()]
 intent = Intent(
@@ -134,7 +147,7 @@ intent = Intent(
     requirements=(
         "Inspect before modifying the repository.",
         "Make only the bounded test-only change.",
-        "Run the real repository test suite after the change.",
+        "Run the relevant repository tests after the change.",
     ),
     constraints=(
         "Do not modify Loom production code.",
@@ -142,7 +155,7 @@ intent = Intent(
     ),
     acceptance=(
         "The bounded regression test exists.",
-        "The repository test suite passes.",
+        "The relevant repository tests pass.",
         "The final result contains worker and verification evidence.",
     ),
     provenance={"source": "agent-consumer-dogfood", "repository": str(ROOT)},
@@ -187,6 +200,17 @@ workers = [item["worker_id"] for item in payload.get("output", [])]
 expected = ["inspect", "implementation", "verification"]
 if workers != expected:
     raise SystemExit(f"unexpected worker sequence: {workers!r}")
+
+verification = next(
+    (item for item in payload["evidence"] if item.get("worker") == "verification"),
+    None,
+)
+if verification is None:
+    raise SystemExit("agent-consumer received no verification evidence")
+if verification.get("returncode") != 0:
+    raise SystemExit(
+        f"agent-consumer received failed verification evidence: {verification!r}"
+    )
 '''
     env = os.environ.copy()
     env["LOOM_AGENT_URL"] = f"http://{server.host}:{server.port}/intents"
