@@ -89,6 +89,9 @@ class VerifyWorker(Worker):
     def execute(self, context):
         self.attempt += 1
         root = pathlib.Path(context.intent.provenance["repository"])
+        pycache = root / "loom_ai" / "__pycache__"
+        for pyc in pycache.glob("dogfood_recovery_target*.pyc"):
+            pyc.unlink(missing_ok=True)
         run = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "tests/test_dogfood_recovery_target.py"],
             cwd=root, capture_output=True, text=True, check=False,
