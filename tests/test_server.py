@@ -158,13 +158,13 @@ def test_server_rejects_overlarge_payload() -> None:
         thread.join(timeout=2)
 
 
-
 def test_server_persists_and_continues_execution_state() -> None:
     with TemporaryDirectory() as state_dir:
+        def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+            return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
+
         server = LoomServer(
-            Arbiter([RecordingWorker()], lambda result, _context: WorkerEvaluation(
-                ArbiterDecision.COMPLETE, reason=result.error
-            )),
+            Arbiter([RecordingWorker()], evaluate),
             port=0,
             execution_store=FileExecutionStateStore(state_dir),
         )
