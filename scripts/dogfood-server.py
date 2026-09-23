@@ -37,10 +37,7 @@ class RepositoryTaskWorker:
 
     def execute(self, context: WorkerContext) -> WorkerResult:
         text = self.target.read_text(encoding="utf-8")
-        continued = any(
-            item.get("type") == "execution-phase" and item.get("phase") == "continued"
-            for item in context.evidence
-        )
+        continued = context.state.get("phase") == "initial"
         if INITIAL_MARKER not in text:
             addition = (
                 f"\n\n\ndef {INITIAL_MARKER}():\n"
