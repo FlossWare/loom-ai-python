@@ -44,7 +44,6 @@ start_server() {
     --root "$TASK" \
     --target "$TARGET" \
     --state-dir "$STATE" \
-    --python "$PY" \
     --host 127.0.0.1 \
     --port "$PORT" >"$LOG" 2>&1 &
   SERVER_PID=$
