@@ -9,7 +9,6 @@ Arbiter, a real repository-changing Worker, and a verification Worker.
 from __future__ import annotations
 
 import argparse
-import subprocess
 from pathlib import Path
 
 from loom_ai import (
@@ -87,31 +86,26 @@ class VerificationWorker:
 
     worker_id = "verification"
 
-    def __init__(self, root: Path, python: str) -> None:
+    def __init__(self, root: Path) -> None:
         self.root = root
-        self.python = python
 
     def execute(self, _context: WorkerContext) -> WorkerResult:
-        result = subprocess.run(
-            [self.python, "-m", "pytest", "-q", "tests/test_server.py"],
-            cwd=self.root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        import pytest
+
+        target = str(self.root / "tests" / "test_server.py")
+        return_code = pytest.main(["-q", target])
         return WorkerResult(
             worker_id=self.worker_id,
             status=(
                 WorkerStatus.SUCCESS
-                if result.returncode == 0
+                if return_code == 0
                 else WorkerStatus.FAILED
             ),
-            output=result.stdout,
-            error=result.stderr[-4000:],
+            output=f"pytest exit code: {return_code}",
             evidence=(
                 {
                     "worker": self.worker_id,
-                    "returncode": result.returncode,
+                    "returncode": return_code,
                 },
             ),
         )
@@ -143,7 +137,7 @@ def build_server(
     port: int,
 ) -> LoomServer:
     arbiter = Arbiter(
-        [RepositoryTaskWorker(target), VerificationWorker(root, python)],
+        [RepositoryTaskWorker(target), VerificationWorker(root)],
         evaluate,
         max_retries=0,
     )
@@ -160,7 +154,6 @@ def main() -> None:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--target", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
-    parser.add_argument("--python", default="python3")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
@@ -169,7 +162,6 @@ def main() -> None:
         root=args.root,
         target=args.target,
         state_dir=args.state_dir,
-        python=args.python,
         host=args.host,
         port=args.port,
     )
