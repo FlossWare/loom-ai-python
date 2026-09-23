@@ -57,6 +57,32 @@ Provider SDKs, credentials, model routing, budgets, caching, evaluation,
 optimization strategies, and other reusable capabilities remain separate
 capabilities rather than becoming implicit responsibilities of this repository.
 
+## Durable dogfood server profile
+
+The default `loom-server` entrypoint remains a transport-smoke server. It intentionally
+uses a NoOp Worker and does not claim to provide repository execution or durable
+process recovery.
+
+For process-boundary qualification, use the committed dogfood profile:
+
+    python scripts/dogfood-server.py \\
+      --root /path/to/task-repository \\
+      --target /path/to/task-repository/tests/test_server.py \\
+      --state-dir /path/to/durable-state \\
+      --python /path/to/loom-ai-python/.venv/bin/python
+
+The profile composes the public HTTP boundary, `FileExecutionStateStore`, Arbiter,
+a real repository-changing Worker, and a verification Worker. It is deliberately
+a qualification profile, not a production workflow or a new orchestration layer.
+
+The reproducible qualification against a fresh `FlossWare/loom-ai` checkout is:
+
+    bash scripts/dogfood-process-boundary.sh
+
+The qualification demonstrates submit, durable persistence, verification, Loom
+process termination, restart, observation by stable `execution_id`, continuation,
+and final verification. The consumer communicates only through the HTTP boundary.
+
 ## Development
 
     python -m ruff format --check .
