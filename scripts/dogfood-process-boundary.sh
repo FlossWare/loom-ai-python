@@ -38,15 +38,22 @@ python3 -m venv .venv
 
 TARGET="$TASK/tests/test_server.py"
 
+log "Bootstrap a real task target in the fresh checkout"
+mkdir -p "$(dirname "$TARGET")"
+cat >"$TARGET" <<'PY'
+def test_loom_dogfood_baseline():
+    assert True
+PY
+
 start_server() {
   log "Starting durable dogfood server profile"
-  "$PY" scripts/dogfood-server.py \
+  "$PY" scripts/dogfood_server.py \
     --root "$TASK" \
     --target "$TARGET" \
     --state-dir "$STATE" \
     --host 127.0.0.1 \
     --port "$PORT" >"$LOG" 2>&1 &
-  SERVER_PID=$
+  SERVER_PID=$!
   for _ in $(seq 1 100); do
     if "$PY" -c "from urllib.request import urlopen; urlopen('$BASE/health', timeout=1)" >/dev/null 2>&1; then
       return
