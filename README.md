@@ -57,6 +57,36 @@ Provider SDKs, credentials, model routing, budgets, caching, evaluation,
 optimization strategies, and other reusable capabilities remain separate
 capabilities rather than becoming implicit responsibilities of this repository.
 
+## Crush integration
+
+Crush can consume Loom through the public HTTP boundary using the thin stdio MCP
+adapter in `scripts/loom_mcp_adapter.py`. The adapter exposes only three tools:
+
+- `loom_submit_intent` -> `POST /intents`
+- `loom_get_execution` -> `GET /executions/{execution_id}`
+- `loom_continue_execution` -> `POST /executions/{execution_id}/continue`
+
+The adapter does not import Loom execution classes, keep execution state, replay a
+Crush transcript, or execute repository work. Set `LOOM_URL` to the dogfood-ready
+Loom server and register the adapter in the project-local Crush configuration:
+
+    {
+      "mcp": {
+        "loom": {
+          "type": "stdio",
+          "command": "python3",
+          "args": ["/path/to/loom-ai-python/scripts/loom_mcp_adapter.py"],
+          "env": {
+            "LOOM_URL": "http://127.0.0.1:8000"
+          }
+        }
+      }
+    }
+
+This is deliberately a thin consumer adapter. Crush owns its agent interaction and
+repository tools; Loom owns Intent execution, Worker/Arbiter orchestration, durable
+execution state, verification semantics, and evidence/provenance.
+
 ## Development
 
     python -m ruff format --check .
