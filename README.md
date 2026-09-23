@@ -68,8 +68,7 @@ For process-boundary qualification, use the committed dogfood profile:
     python scripts/dogfood-server.py \\
       --root /path/to/task-repository \\
       --target /path/to/task-repository/tests/test_server.py \\
-      --state-dir /path/to/durable-state \\
-      --python /path/to/loom-ai-python/.venv/bin/python
+      --state-dir /path/to/durable-state
 
 The profile composes the public HTTP boundary, `FileExecutionStateStore`, Arbiter,
 a real repository-changing Worker, and a verification Worker. It is deliberately
