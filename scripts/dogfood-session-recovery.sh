@@ -68,7 +68,7 @@ class SessionWorker:
         if INITIAL_MARKER not in text:
             addition = (
                 f"\n\ndef {INITIAL_MARKER}():\n"
-                "    \\\"Bounded process-boundary qualification marker.\\\"\n"
+                "    \"Bounded process-boundary qualification marker.\"\n"
                 "    assert True\n"
             )
             TARGET.write_text(text.rstrip() + addition)
@@ -83,7 +83,7 @@ class SessionWorker:
         if phase and FOLLOWUP_MARKER not in text:
             addition = (
                 f"\n\ndef {FOLLOWUP_MARKER}():\n"
-                "    \\\"Follow-up after Loom process restart.\\\"\n"
+                "    \"Follow-up after Loom process restart.\"\n"
                 "    assert True\n"
             )
             TARGET.write_text(text.rstrip() + addition)
