@@ -13,7 +13,6 @@ def test_dogfood_profile_uses_durable_store_and_real_arbiter(tmp_path: Path) -> 
     target.write_text("def existing():\n    return True\n", encoding="utf-8")
 
     server = build_server(
-        root=root,
         target=target,
         state_dir=tmp_path / "state",
         host="127.0.0.1",
