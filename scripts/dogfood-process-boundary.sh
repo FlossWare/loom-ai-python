@@ -3,7 +3,8 @@ set -euo pipefail
 
 RUNTIME_URL="https://github.com/FlossWare/loom-ai-python.git"
 TASK_URL="https://github.com/FlossWare/loom-ai.git"
-REF="${LOOM_DOGFOOD_REF:-main}"
+RUNTIME_REF="${LOOM_DOGFOOD_REF:-main}"
+TASK_REF="${LOOM_DOGFOOD_TASK_REF:-main}"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/loom-dogfood.XXXXXX")"
 RUNTIME="$WORKDIR/runtime"
 TASK="$WORKDIR/task"
@@ -28,9 +29,9 @@ trap cleanup EXIT
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required"
 
-log "Cloning Loom runtime and real task repository"
-git clone --quiet --depth 1 --branch "$REF" "$RUNTIME_URL" "$RUNTIME"
-git clone --quiet --depth 1 --branch "$REF" "$TASK_URL" "$TASK"
+log "Cloning Loom runtime ref $RUNTIME_REF and real task repository ref $TASK_REF"
+git clone --quiet --depth 1 --branch "$RUNTIME_REF" "$RUNTIME_URL" "$RUNTIME"
+git clone --quiet --depth 1 --branch "$TASK_REF" "$TASK_URL" "$TASK"
 
 cd "$RUNTIME"
 python3 -m venv .venv
@@ -48,7 +49,6 @@ PY
 start_server() {
   log "Starting durable dogfood server profile"
   "$PY" scripts/dogfood_server.py \
-    --root "$TASK" \
     --target "$TARGET" \
     --state-dir "$STATE" \
     --host 127.0.0.1 \
