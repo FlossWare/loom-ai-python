@@ -136,7 +136,7 @@ def build_server(
     port: int,
 ) -> LoomServer:
     arbiter = Arbiter(
-        [RepositoryTaskWorker(target), VerificationWorker(root)],
+        [RepositoryTaskWorker(target), VerificationWorker(target)],
         evaluate,
         max_retries=0,
     )
