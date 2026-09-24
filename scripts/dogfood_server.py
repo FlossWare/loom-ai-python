@@ -129,7 +129,6 @@ def evaluate(
 
 def build_server(
     *,
-    root: Path,
     target: Path,
     state_dir: Path,
     host: str,
@@ -150,7 +149,6 @@ def build_server(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--target", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--host", default="127.0.0.1")
@@ -158,7 +156,6 @@ def main() -> None:
     args = parser.parse_args()
 
     server = build_server(
-        root=args.root,
         target=args.target,
         state_dir=args.state_dir,
         host=args.host,
