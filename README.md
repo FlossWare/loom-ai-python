@@ -65,7 +65,7 @@ process recovery.
 
 For process-boundary qualification, use the committed dogfood profile:
 
-    python scripts/dogfood-server.py \\
+    python scripts/dogfood_server.py \\
       --root /path/to/task-repository \\
       --target /path/to/task-repository/tests/test_server.py \\
       --state-dir /path/to/durable-state
@@ -76,7 +76,10 @@ a qualification profile, not a production workflow or a new orchestration layer.
 
 The reproducible qualification against a fresh `FlossWare/loom-ai` checkout is:
 
-    bash scripts/dogfood-process-boundary.sh
+    LOOM_DOGFOOD_REF=feat-1015-dogfood-server-profile bash scripts/dogfood-process-boundary.sh
+
+`LOOM_DOGFOOD_REF` selects the runtime branch under qualification. The task repository
+uses `main` by default and can be overridden with `LOOM_DOGFOOD_TASK_REF`.
 
 The qualification demonstrates submit, durable persistence, verification, Loom
 process termination, restart, observation by stable `execution_id`, continuation,
