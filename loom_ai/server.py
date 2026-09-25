@@ -254,7 +254,6 @@ class LoomServer:
         return Handler
 
 
-
 def _state_from_result(
     execution_id: str,
     intent: Intent,
