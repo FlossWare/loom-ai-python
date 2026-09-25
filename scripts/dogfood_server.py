@@ -31,11 +31,10 @@ class RepositoryTaskWorker:
 
     worker_id = "repository-task"
 
-    def __init__(self, target: Path) -> None:
-        self.target = target
 
     def execute(self, context: WorkerContext) -> WorkerResult:
-        text = self.target.read_text(encoding="utf-8")
+        target = Path("tests/test_server.py")
+        text = target.read_text(encoding="utf-8")
         continued = context.state.get("phase") == "initial"
         if INITIAL_MARKER not in text:
             addition = (
@@ -43,7 +42,7 @@ class RepositoryTaskWorker:
                 "    \"Bounded Loom dogfood marker.\"\n"
                 "    assert True\n"
             )
-            self.target.write_text(text.rstrip() + addition, encoding="utf-8")
+            target.write_text(text.rstrip() + addition, encoding="utf-8")
             return WorkerResult(
                 worker_id=self.worker_id,
                 status=WorkerStatus.SUCCESS,
@@ -86,13 +85,10 @@ class VerificationWorker:
 
     worker_id = "verification"
 
-    def __init__(self, target: Path) -> None:
-        self.target = target
-
     def execute(self, _context: WorkerContext) -> WorkerResult:
         import pytest
 
-        target = str(self.target)
+        target = "tests/test_server.py"
         return_code = pytest.main(["-q", target])
         return WorkerResult(
             worker_id=self.worker_id,
@@ -129,13 +125,11 @@ def evaluate(
 
 def build_server(
     *,
-    target: Path,
-    state_dir: Path,
     host: str,
     port: int,
 ) -> LoomServer:
     arbiter = Arbiter(
-        [RepositoryTaskWorker(target), VerificationWorker(target)],
+        [RepositoryTaskWorker(), VerificationWorker()],
         evaluate,
         max_retries=0,
     )
@@ -156,8 +150,6 @@ def main() -> None:
     # The executable dogfood profile deliberately fixes its task boundary to
     # the current checkout instead of accepting arbitrary filesystem paths.
     server = build_server(
-        target=Path("tests/test_server.py"),
-        state_dir=Path(".loom-dogfood-state"),
         host=args.host,
         port=args.port,
     )
