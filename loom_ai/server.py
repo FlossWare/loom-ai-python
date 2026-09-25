@@ -181,7 +181,9 @@ class LoomServer:
                         self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
                         return
                     except ExecutionStateCorruptError as exc:
-                        self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
                         return
                     self._send(
                         HTTPStatus.OK,
