@@ -66,7 +66,6 @@ process recovery.
 For process-boundary qualification, use the committed dogfood profile:
 
     python scripts/dogfood_server.py \\
-      --root /path/to/task-repository \\
       --target /path/to/task-repository/tests/test_server.py \\
       --state-dir /path/to/durable-state
 
