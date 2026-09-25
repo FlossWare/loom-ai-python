@@ -17,7 +17,11 @@ from typing import Any
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
-from loom_ai.execution_state import (\n    ExecutionState,\n    ExecutionStateCorruptError,\n    ExecutionStateStore,\n)
+from loom_ai.execution_state import (
+    ExecutionState,
+    ExecutionStateCorruptError,
+    ExecutionStateStore,
+)
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
@@ -146,10 +150,14 @@ class LoomServer:
                     try:
                         execution = owner.execution_store.load(execution_id)
                     except ExecutionStateCorruptError as exc:
-                        self._send(\n                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}\n                        )
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
                         return
                     if execution is None:
-                        self._send(\n                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}\n                        )
+                        self._send(
+                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                        )
                         return
                     self._send(HTTPStatus.OK, _execution_payload(execution))
                     return
