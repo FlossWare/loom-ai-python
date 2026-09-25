@@ -264,9 +264,11 @@ def _state_from_result(
 ) -> ExecutionState:
     """Build durable observable state for one execution phase."""
     prior_evidence = prior.evidence if prior is not None else ()
-    evidence = prior_evidence + (
-        {"type": "execution-phase", "phase": phase, "execution_id": execution_id},
-    ) + result.evidence
+    evidence = (
+        prior_evidence
+        + ({"type": "execution-phase", "phase": phase, "execution_id": execution_id},)
+        + result.evidence
+    )
     return ExecutionState(
         execution_id=execution_id,
         intent=intent,
