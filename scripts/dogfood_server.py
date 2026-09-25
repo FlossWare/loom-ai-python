@@ -31,9 +31,11 @@ class RepositoryTaskWorker:
 
     worker_id = "repository-task"
 
-
     def execute(self, context: WorkerContext) -> WorkerResult:
-        target = Path("tests/test_server.py")
+        root = Path.cwd().resolve()
+        target = (root / "tests" / "test_server.py").resolve()
+        if target.parent != root / "tests":
+            raise RuntimeError("dogfood target escaped the task checkout")
         text = target.read_text(encoding="utf-8")
         continued = context.state.get("phase") == "initial"
         if INITIAL_MARKER not in text:
@@ -88,8 +90,11 @@ class VerificationWorker:
     def execute(self, _context: WorkerContext) -> WorkerResult:
         import pytest
 
-        target = "tests/test_server.py"
-        return_code = pytest.main(["-q", target])
+        root = Path.cwd().resolve()
+        target = (root / "tests" / "test_server.py").resolve()
+        if target.parent != root / "tests":
+            raise RuntimeError("dogfood target escaped the task checkout")
+        return_code = pytest.main(["-q", str(target)])
         return WorkerResult(
             worker_id=self.worker_id,
             status=(
