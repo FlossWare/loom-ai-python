@@ -65,9 +65,9 @@ process recovery.
 
 For process-boundary qualification, use the committed dogfood profile:
 
-    python scripts/dogfood_server.py \\
-      --target /path/to/task-repository/tests/test_server.py \\
-      --state-dir /path/to/durable-state
+    cd /path/to/task-repository
+    PYTHONPATH=/path/to/loom-ai-python python /path/to/loom-ai-python/scripts/dogfood_server.py \\
+      --host 127.0.0.1 --port 8000
 
 The profile composes the public HTTP boundary, `FileExecutionStateStore`, Arbiter,
 a real repository-changing Worker, and a verification Worker. It is deliberately
