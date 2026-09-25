@@ -57,7 +57,7 @@ class RepositoryTaskWorker:
                 "    \"Follow-up after Loom process restart.\"\n"
                 "    assert True\n"
             )
-            self.target.write_text(text.rstrip() + addition, encoding="utf-8")
+            target.write_text(text.rstrip() + addition, encoding="utf-8")
             return WorkerResult(
                 worker_id=self.worker_id,
                 status=WorkerStatus.SUCCESS,
@@ -137,7 +137,7 @@ def build_server(
         arbiter,
         host=host,
         port=port,
-        execution_store=FileExecutionStateStore(state_dir),
+        execution_store=FileExecutionStateStore(Path(".loom-dogfood-state")),
     )
 
 
