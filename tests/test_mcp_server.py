@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from mcp import Client
 
@@ -46,19 +47,22 @@ def test_mcp_client_invokes_all_loom_tools() -> None:
                 {"goal": "do real work"},
             )
             assert submitted.is_error is False
-            assert submitted.structured_content["execution_id"] == "exec-1"
+            submitted_payload = json.loads(submitted.content[0].text)
+            assert submitted_payload["execution_id"] == "exec-1"
 
             observed = await client.call_tool(
                 "loom_get_execution",
                 {"execution_id": "exec-1"},
             )
-            assert observed.structured_content["execution_id"] == "exec-1"
+            observed_payload = json.loads(observed.content[0].text)
+            assert observed_payload["execution_id"] == "exec-1"
 
             continued = await client.call_tool(
                 "loom_continue_execution",
                 {"execution_id": "exec-1"},
             )
-            assert continued.structured_content["continued"] is True
+            continued_payload = json.loads(continued.content[0].text)
+            assert continued_payload["continued"] is True
 
     asyncio.run(run())
 
