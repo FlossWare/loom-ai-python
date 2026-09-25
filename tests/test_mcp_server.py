@@ -1,10 +1,28 @@
 import asyncio
 import json
 import sys
+from tempfile import TemporaryDirectory
+from threading import Thread
 
 from mcp import Client, StdioServerParameters
 
+from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.execution_state import FileExecutionStateStore
+from loom_ai.server import LoomServer
+from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 from scripts.loom_mcp_server import LoomHTTPClient, create_server
+
+
+class RecordingWorker:
+    worker_id = "mcp-test-worker"
+
+    def execute(self, context: WorkerContext) -> WorkerResult:
+        return WorkerResult(
+            worker_id=self.worker_id,
+            status=WorkerStatus.SUCCESS,
+            output={"goal": context.intent.goal},
+            evidence=({"source": "mcp-e2e"},),
+        )
 
 
 class FakeClient:
@@ -55,6 +73,67 @@ def test_mcp_stdio_protocol_with_external_process() -> None:
             ]
 
     asyncio.run(run())
+
+
+def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
+    with TemporaryDirectory() as state_dir:
+        def evaluate(
+            result: WorkerResult, _context: WorkerContext
+        ) -> WorkerEvaluation:
+            return WorkerEvaluation(
+                ArbiterDecision.COMPLETE,
+                reason="mcp e2e",
+            )
+
+        server = LoomServer(
+            Arbiter([RecordingWorker()], evaluate),
+            host="127.0.0.1",
+            port=0,
+            execution_store=FileExecutionStateStore(state_dir),
+        )
+        http_server = server.start()
+        thread = Thread(target=http_server.serve_forever, daemon=True)
+        thread.start()
+
+        async def run() -> None:
+            mcp_process = StdioServerParameters(
+                command=sys.executable,
+                args=["scripts/loom_mcp_server.py"],
+                env={"LOOM_URL": f"http://127.0.0.1:{server.port}"},
+            )
+            async with Client(mcp_process) as client:
+                tools = await client.list_tools()
+                assert len(tools.tools) == 3
+
+                submitted = await client.call_tool(
+                    "loom_submit_intent",
+                    {"goal": "exercise the real MCP boundary"},
+                )
+                submitted_payload = json.loads(submitted.content[0].text)
+                execution_id = submitted_payload["execution_id"]
+                assert execution_id
+
+                observed = await client.call_tool(
+                    "loom_get_execution",
+                    {"execution_id": execution_id},
+                )
+                observed_payload = json.loads(observed.content[0].text)
+                assert observed_payload["execution_id"] == execution_id
+                assert observed_payload["status"] == "success"
+
+                continued = await client.call_tool(
+                    "loom_continue_execution",
+                    {"execution_id": execution_id},
+                )
+                continued_payload = json.loads(continued.content[0].text)
+                assert continued_payload["execution_id"] == execution_id
+                assert continued_payload["status"] == "success"
+
+        try:
+            asyncio.run(run())
+        finally:
+            server.close()
+            thread.join(timeout=2)
 
 
 def test_mcp_client_invokes_all_loom_tools() -> None:
