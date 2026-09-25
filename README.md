@@ -57,6 +57,39 @@ Provider SDKs, credentials, model routing, budgets, caching, evaluation,
 optimization strategies, and other reusable capabilities remain separate
 capabilities rather than becoming implicit responsibilities of this repository.
 
+## Generic MCP interface
+
+Loom exposes a generic MCP server through scripts/loom_mcp_server.py. MCP is a
+protocol boundary, not a client-specific adapter. Any MCP-capable host can consume
+the same Loom server; Crush and Claude are examples of clients, not special cases.
+
+The server is deliberately thin and maps MCP tools to the existing public Loom HTTP
+boundary:
+
+- loom_submit_intent -> POST /intents
+- loom_get_execution -> GET /executions/{execution_id}
+- loom_continue_execution -> POST /executions/{execution_id}/continue
+
+The MCP server does not import Loom execution classes, own execution state, replay
+client transcripts, or execute repository work. Loom remains responsible for Intent
+execution, Worker/Arbiter orchestration, durable execution state, verification,
+and evidence/provenance.
+
+Install the MCP extra before running the server:
+
+    python -m pip install 'flossware-loom-ai-python[mcp]'
+
+Then configure any MCP-capable host to launch:
+
+    python3 /path/to/loom-ai-python/scripts/loom_mcp_server.py
+
+with:
+
+    LOOM_URL=http://127.0.0.1:8000
+
+For hosts that support project-local MCP configuration, the same command and
+environment are used regardless of which host consumes Loom.
+
 ## Development
 
     python -m ruff format --check .
@@ -70,8 +103,8 @@ naming and layering convention.
 
 ## Python import identity
 
-The distribution is named `flossware-loom-ai-python` to make the implementation boundary explicit.
+The distribution is named flossware-loom-ai-python to make the implementation boundary explicit.
 
-The Python import package remains `loom_ai` for compatibility with the existing Python implementation API. This import name is a language-specific implementation detail and is **not** the architectural identity or authority of the AI-domain contract.
+The Python import package remains loom_ai for compatibility with the existing Python implementation API. This import name is a language-specific implementation detail and is **not** the architectural identity or authority of the AI-domain contract.
 
-A future `loom-ai-java` or `loom-ai-erlang` implementation does not share or depend on the Python import namespace.
+A future loom-ai-java or loom-ai-erlang implementation does not share or depend on the Python import namespace.
