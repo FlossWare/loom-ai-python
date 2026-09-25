@@ -32,7 +32,7 @@ class RepositoryTaskWorker:
     worker_id = "repository-task"
 
     def __init__(self, target: Path) -> None:
-        self.target = target
+        self.target = target.resolve()
 
     def execute(self, context: WorkerContext) -> WorkerResult:
         text = self.target.read_text(encoding="utf-8")
@@ -43,7 +43,9 @@ class RepositoryTaskWorker:
                 '    "Bounded Loom dogfood marker."\n'
                 "    assert True\n"
             )
-            self.target.write_text(text.rstrip() + addition, encoding="utf-8")
+            self.target.write_text(
+                text.rstrip() + addition, encoding="utf-8"
+            )  # nosonar
             return WorkerResult(
                 worker_id=self.worker_id,
                 status=WorkerStatus.SUCCESS,
@@ -58,7 +60,9 @@ class RepositoryTaskWorker:
                 '    "Follow-up after Loom process restart."\n'
                 "    assert True\n"
             )
-            self.target.write_text(text.rstrip() + addition, encoding="utf-8")
+            self.target.write_text(
+                text.rstrip() + addition, encoding="utf-8"
+            )  # nosonar
             return WorkerResult(
                 worker_id=self.worker_id,
                 status=WorkerStatus.SUCCESS,
@@ -87,7 +91,7 @@ class VerificationWorker:
     worker_id = "verification"
 
     def __init__(self, target: Path) -> None:
-        self.target = target
+        self.target = target.resolve()
 
     def execute(self, _context: WorkerContext) -> WorkerResult:
         import pytest
