@@ -164,8 +164,14 @@ class LoomServer:
                 self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
             def do_POST(self) -> None:  # noqa: N802
-                if self.path.startswith("/executions/") and self.path.endswith("/continue"):
-                    execution_id = self.path.removeprefix("/executions/").removesuffix("/continue").strip("/")
+                if self.path.startswith("/executions/") and self.path.endswith(
+                    "/continue"
+                ):
+                    execution_id = (
+                        self.path.removeprefix("/executions/")
+                        .removesuffix("/continue")
+                        .strip("/")
+                    )
                     if not execution_id or owner.execution_store is None:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
