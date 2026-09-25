@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from loom_ai.execution_state import FileExecutionStateStore
@@ -5,7 +6,9 @@ from loom_ai.server import LoomServer
 from scripts.dogfood_server import VerificationWorker, build_server
 
 
-def test_dogfood_profile_uses_durable_store_and_real_arbiter(tmp_path: Path, monkeypatch) -> None:
+def test_dogfood_profile_uses_durable_store_and_real_arbiter(
+    tmp_path: Path, monkeypatch
+) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     target = root / "target.py"
@@ -34,6 +37,7 @@ def test_verification_worker_uses_fixed_target(tmp_path: Path, monkeypatch) -> N
     target.parent.mkdir()
     target.write_text("def test_marker():\n    assert True\n", encoding="utf-8")
 
+    sys.modules.pop("test_server", None)
     result = VerificationWorker().execute(None)
 
     assert result.successful
