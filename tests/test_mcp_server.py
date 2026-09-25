@@ -1,7 +1,8 @@
 import asyncio
 import json
+import sys
 
-from mcp import Client
+from mcp import Client, StdioServerParameters
 
 from scripts.loom_mcp_server import LoomHTTPClient, create_server
 
@@ -35,6 +36,23 @@ def test_mcp_client_discovers_generic_loom_tools() -> None:
                 "loom_continue_execution",
             ]
             assert client.server_info.name == "loom"
+
+    asyncio.run(run())
+
+
+def test_mcp_stdio_protocol_with_external_process() -> None:
+    async def run() -> None:
+        server = StdioServerParameters(
+            command=sys.executable,
+            args=["scripts/loom_mcp_server.py"],
+        )
+        async with Client(server) as client:
+            tools = await client.list_tools()
+            assert [tool.name for tool in tools.tools] == [
+                "loom_submit_intent",
+                "loom_get_execution",
+                "loom_continue_execution",
+            ]
 
     asyncio.run(run())
 
