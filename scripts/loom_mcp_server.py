@@ -55,11 +55,13 @@ class LoomHTTPClient:
         return self._request("POST", "/intents", arguments)
 
     def observe(self, execution_id: str) -> dict:
-        return self._request("GET", f"/executions/{execution_id}")
+        encoded_id = quote(execution_id, safe="")
+        return self._request("GET", f"/executions/{encoded_id}")
 
     def continue_execution(self, execution_id: str) -> dict:
+        encoded_id = quote(execution_id, safe="")
         return self._request(
-            "POST", f"/executions/{execution_id}/continue", {}
+            "POST", f"/executions/{encoded_id}/continue", {}
         )
 
 
