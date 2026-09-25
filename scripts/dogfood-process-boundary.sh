@@ -8,7 +8,7 @@ TASK_REF="${LOOM_DOGFOOD_TASK_REF:-main}"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/loom-dogfood.XXXXXX")"
 RUNTIME="$WORKDIR/runtime"
 TASK="$WORKDIR/task"
-STATE="$WORKDIR/state"
+STATE="$TASK/.loom-dogfood-state"
 PORT="${LOOM_DOGFOOD_PORT:-18766}"
 BASE="http://127.0.0.1:$PORT"
 LOG="$WORKDIR/server.log"
@@ -48,11 +48,9 @@ PY
 
 start_server() {
   log "Starting durable dogfood server profile"
-  "$PY" scripts/dogfood_server.py \
-    --target "$TARGET" \
-    --state-dir "$STATE" \
+  (cd "$TASK" && PYTHONPATH="$RUNTIME" "$PY" "$RUNTIME/scripts/dogfood_server.py" \
     --host 127.0.0.1 \
-    --port "$PORT" >"$LOG" 2>&1 &
+    --port "$PORT") >"$LOG" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 100); do
     if "$PY" -c "from urllib.request import urlopen; urlopen('$BASE/health', timeout=1)" >/dev/null 2>&1; then
