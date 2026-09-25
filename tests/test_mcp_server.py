@@ -91,3 +91,16 @@ def test_http_client_maps_only_public_loom_endpoints() -> None:
     assert callable(client.submit)
     assert callable(client.observe)
     assert callable(client.continue_execution)
+
+
+def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
+    class RecordingClient(LoomHTTPClient):
+        def _request(self, method, path, payload=None):
+            return {"method": method, "path": path, "payload": payload}
+
+    client = RecordingClient("http://example.test")
+    observed = client.observe("execution/with spaces")
+    continued = client.continue_execution("execution/with spaces")
+
+    assert observed["path"] == "/executions/execution%2Fwith%20spaces"
+    assert continued["path"] == "/executions/execution%2Fwith%20spaces/continue"
