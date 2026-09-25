@@ -17,7 +17,11 @@ from typing import Any
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
-from loom_ai.execution_state import ExecutionState, ExecutionStateCorruptError, ExecutionStateStore
+from loom_ai.execution_state import (
+    ExecutionState,
+    ExecutionStateCorruptError,
+    ExecutionStateStore,
+)
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
@@ -146,18 +150,28 @@ class LoomServer:
                     try:
                         execution = owner.execution_store.load(execution_id)
                     except ExecutionStateCorruptError as exc:
-                        self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
                         return
                     if execution is None:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "execution not found"})
+                        self._send(
+                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                        )
                         return
                     self._send(HTTPStatus.OK, _execution_payload(execution))
                     return
                 self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
             def do_POST(self) -> None:  # noqa: N802
-                if self.path.startswith("/executions/") and self.path.endswith("/continue"):
-                    execution_id = self.path.removeprefix("/executions/").removesuffix("/continue").strip("/")
+                if self.path.startswith("/executions/") and self.path.endswith(
+                    "/continue"
+                ):
+                    execution_id = (
+                        self.path.removeprefix("/executions/")
+                        .removesuffix("/continue")
+                        .strip("/")
+                    )
                     if not execution_id or owner.execution_store is None:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
@@ -167,7 +181,9 @@ class LoomServer:
                         self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
                         return
                     except ExecutionStateCorruptError as exc:
-                        self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
                         return
                     self._send(
                         HTTPStatus.OK,
@@ -238,7 +254,6 @@ class LoomServer:
         return Handler
 
 
-
 def _state_from_result(
     execution_id: str,
     intent: Intent,
@@ -249,9 +264,11 @@ def _state_from_result(
 ) -> ExecutionState:
     """Build durable observable state for one execution phase."""
     prior_evidence = prior.evidence if prior is not None else ()
-    evidence = prior_evidence + (
-        {"type": "execution-phase", "phase": phase, "execution_id": execution_id},
-    ) + result.evidence
+    evidence = (
+        prior_evidence
+        + ({"type": "execution-phase", "phase": phase, "execution_id": execution_id},)
+        + result.evidence
+    )
     return ExecutionState(
         execution_id=execution_id,
         intent=intent,
