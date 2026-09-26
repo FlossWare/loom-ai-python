@@ -77,9 +77,7 @@ def test_mcp_stdio_protocol_with_external_process() -> None:
 
 def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
     with TemporaryDirectory() as state_dir:
-        def evaluate(
-            result: WorkerResult, _context: WorkerContext
-        ) -> WorkerEvaluation:
+        def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
             return WorkerEvaluation(
                 ArbiterDecision.COMPLETE,
                 reason="mcp e2e",
