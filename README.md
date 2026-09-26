@@ -87,6 +87,11 @@ with:
 
     LOOM_URL=http://127.0.0.1:8000
 
+For real submit/observe/continue behavior across process boundaries, point
+LOOM_URL at a Loom server profile backed by a durable ExecutionStateStore (for
+example, the durable dogfood profile). The default Loom transport-smoke server
+is useful for protocol testing but is not itself a durable-storage guarantee.
+
 For hosts that support project-local MCP configuration, the same command and
 environment are used regardless of which host consumes Loom.
 
