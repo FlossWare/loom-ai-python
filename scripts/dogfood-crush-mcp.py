@@ -78,7 +78,14 @@ def main() -> int:
     if crush is None:
         fail("crush is not installed or is not on PATH")
 
-    python = sys.executable
+    python = root / ".venv" / "bin" / "python"
+    if not python.is_file():
+        fail(
+            "Python virtual environment is required for the MCP server: "
+            f"{python}. Create it with python3 -m venv .venv and install "
+            "the MCP extra with .venv/bin/python -m pip install -e '.[mcp]'."
+        )
+
     mcp_server = root / "scripts" / "loom_mcp_server.py"
 
     with tempfile.TemporaryDirectory(prefix="loom-crush-mcp-") as temp:
@@ -167,6 +174,7 @@ Do not perform the repository edit yourself.
 
         print("==> Crush -> generic Loom MCP -> Loom HTTP dogfood")
         print(f"Crush: {crush}")
+        print(f"MCP Python: {python}")
         print(
             "Crush version:",
             subprocess.run(
