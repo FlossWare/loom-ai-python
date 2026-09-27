@@ -132,9 +132,15 @@ class VerificationWorker:
             return result_failure(
                 self.worker_id, result.stderr.strip() or "git status failed"
             )
-        if result.stdout.strip():
+        unexpected = [
+            line
+            for line in result.stdout.splitlines()
+            if line and line != "?? .crushrc"
+        ]
+        if unexpected:
             return result_failure(
-                self.worker_id, "real dogfood clone is not clean before the task"
+                self.worker_id,
+                f"real dogfood clone has unexpected changes before the task: {unexpected!r}",
             )
 
         return WorkerResult(
@@ -275,6 +281,8 @@ If verification fails, investigate and correct the task before reporting success
             if completed.returncode != 0:
                 fail(f"Crush exited with status {completed.returncode}")
 
+            (repo / ".crushrc").unlink(missing_ok=True)
+
             execution = request_json(
                 f"http://127.0.0.1:{server.port}/executions/{execution_id}"
             )
@@ -297,6 +305,10 @@ If verification fails, investigate and correct the task before reporting success
             final_text = (repo / TARGET_FILE).read_text(encoding="utf-8")
             if MARKER not in final_text:
                 fail(f"missing {MARKER!r} in {TARGET_FILE}")
+
+            status = run(["git", "status", "--porcelain"], cwd=repo)
+            if status.returncode != 0 or status.stdout.strip():
+                fail(f"unexpected working-tree state: {status.stdout.splitlines()!r}")
 
             diff = run(["git", "diff", "--name-only"], cwd=repo)
             if diff.stdout.splitlines() != [TARGET_FILE]:
