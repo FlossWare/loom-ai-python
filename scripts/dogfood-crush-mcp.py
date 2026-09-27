@@ -22,6 +22,12 @@ import urllib.request
 from pathlib import Path
 from uuid import uuid4
 
+# Resolve the Python implementation from this repository before importing it.
+# A sibling `loom-ai` checkout may be on PYTHONPATH and must not shadow this
+# repository's Python realization of the Loom contracts.
+root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root))
+
 from loom_ai import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.server import LoomServer
@@ -68,7 +74,6 @@ def evaluate(result, _context) -> WorkerEvaluation:
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parents[1]
     crush = shutil.which("crush")
     if crush is None:
         fail("crush is not installed or is not on PATH")
