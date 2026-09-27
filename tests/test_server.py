@@ -160,6 +160,7 @@ def test_server_rejects_overlarge_payload() -> None:
 
 def test_server_persists_and_continues_execution_state() -> None:
     with TemporaryDirectory() as state_dir:
+
         def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
             return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 

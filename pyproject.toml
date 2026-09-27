@@ -24,7 +24,8 @@ classifiers = [
 loom-server = "loom_ai.server:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff>=0.4", "build>=1.2", "pip-audit>=2.7"]
+dev = ["pytest>=7.0", "ruff>=0.4", "build>=1.2", "pip-audit>=2.7", "mcp>=2,<3"]
+mcp = ["mcp>=2,<3"]
 server = []
 
 [tool.hatch.build.targets.wheel]
