@@ -316,8 +316,12 @@ If verification fails, investigate and correct the task before reporting success
                 fail(f"missing {MARKER!r} in {TARGET_FILE}")
 
             status = run(["git", "status", "--porcelain"], cwd=repo)
-            if status.returncode != 0 or status.stdout.strip():
-                fail(f"unexpected working-tree state: {status.stdout.splitlines()!r}")
+            expected_status = [f" M {TARGET_FILE}"]
+            if status.returncode != 0 or status.stdout.splitlines() != expected_status:
+                fail(
+                    "unexpected working-tree state: "
+                    f"{status.stdout.splitlines()!r}; expected {expected_status!r}"
+                )
 
             diff = run(["git", "diff", "--name-only"], cwd=repo)
             if diff.stdout.splitlines() != [TARGET_FILE]:
