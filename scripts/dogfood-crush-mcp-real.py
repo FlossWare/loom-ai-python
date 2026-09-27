@@ -25,7 +25,13 @@ from uuid import uuid4
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 
-from loom_ai import Arbiter, ArbiterDecision, WorkerEvaluation, WorkerResult, WorkerStatus
+from loom_ai import (
+    Arbiter,
+    ArbiterDecision,
+    WorkerEvaluation,
+    WorkerResult,
+    WorkerStatus,
+)
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.server import LoomServer
 from loom_ai.worker import WorkerContext
@@ -183,7 +189,9 @@ def evaluate(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
+        description=(
+            "Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
+        )
     )
     parser.add_argument("--repo", default=REPO_URL, help="Git repository URL")
     parser.add_argument(
@@ -272,7 +280,9 @@ Execution protocol:
 4. Run the appropriate tests/validation for the change.
 5. Call loom_continue_execution exactly once with execution_id
    "{execution_id}". Do not claim success if that Loom verification fails.
-6. Report the final execution_id and the repository verification result.
+6. Do not commit or push the change; leave it in the working tree for the
+   harness to verify.
+7. Report the final execution_id and the repository verification result.
 
 The Loom checkpoint is authoritative for the workflow result. If verification
 fails, investigate and correct the task before reporting success.
