@@ -75,7 +75,7 @@ def request_json(url: str) -> dict:
 
 
 def result_failure(worker_id: str, error: str) -> WorkerResult:
-    return WorkerResult(worker_id, WorkerStatus.FAILURE, error=error)
+    return WorkerResult(worker_id, WorkerStatus.FAILED, error=error)
 
 
 def verify_repository(repo: Path) -> WorkerResult:
@@ -115,8 +115,9 @@ def verify_repository(repo: Path) -> WorkerResult:
 class VerificationWorker:
     worker_id = "real-repo-verify"
 
-    def __init__(self, repo: Path) -> None:
+    def __init__(self, repo: Path, *, force_failure: bool = False) -> None:
         self.repo = repo
+        self.force_failure = force_failure
 
     def execute(self, context: WorkerContext) -> WorkerResult:
         checkpoint_seen = any(
@@ -125,6 +126,11 @@ class VerificationWorker:
             for item in context.evidence
         )
         if checkpoint_seen:
+            if self.force_failure:
+                return result_failure(
+                    self.worker_id,
+                    "deliberate negative-path verification failure",
+                )
             return verify_repository(self.repo)
 
         result = run(["git", "status", "--porcelain"], cwd=self.repo)
@@ -174,6 +180,11 @@ def main() -> int:
     parser.add_argument(
         "--model", default=None, help="Optional Crush model passed to crush run"
     )
+    parser.add_argument(
+        "--expect-failure",
+        action="store_true",
+        help="Run the deliberate verification-failure qualification path",
+    )
     args = parser.parse_args()
 
     crush = shutil.which("crush")
@@ -205,7 +216,11 @@ def main() -> int:
         intent_id = f"intent-{uuid4()}"
         store = FileExecutionStateStore(temp_root / "execution-state")
         server = LoomServer(
-            Arbiter([VerificationWorker(repo)], evaluate, max_retries=0),
+            Arbiter(
+                [VerificationWorker(repo, force_failure=args.expect_failure)],
+                evaluate,
+                max_retries=0,
+            ),
             host="127.0.0.1",
             port=0,
             execution_store=store,
@@ -260,7 +275,8 @@ Execution protocol:
    harness to verify.
 7. Report the final execution_id and the repository verification result.
 
-If verification fails, investigate and correct the task before reporting success.
+If this is a normal run and verification fails, investigate and correct the task before reporting success.
+If this is a negative-path run, do not attempt to repair the deliberate verification failure; report the failed Loom execution.
 """.strip()
 
         env = os.environ.copy()
@@ -297,8 +313,12 @@ If verification fails, investigate and correct the task before reporting success
             )
             print("\n==> Durable Loom execution")
             print(json.dumps(execution, indent=2, sort_keys=True))
-            if execution.get("status") != "success":
-                fail(f"Loom execution status is {execution.get('status')!r}")
+            expected_execution_status = "failed" if args.expect_failure else "success"
+            if execution.get("status") != expected_execution_status:
+                fail(
+                    f"Loom execution status is {execution.get('status')!r}; "
+                    f"expected {expected_execution_status!r}"
+                )
             if execution.get("intent_id") != intent_id:
                 fail("Loom intent_id does not match")
 
@@ -331,10 +351,16 @@ If verification fails, investigate and correct the task before reporting success
             if diff_check.returncode != 0:
                 fail("git diff --check failed")
 
-            print(
-                "\nRESULT: FRESH CRUSH -> GENERIC MCP -> LOOM -> "
-                "REAL REPO PASSED"
-            )
+            if args.expect_failure:
+                print(
+                    "\nRESULT: FRESH CRUSH -> GENERIC MCP -> LOOM -> "
+                    "DELIBERATE VERIFICATION FAILURE PASSED"
+                )
+            else:
+                print(
+                    "\nRESULT: FRESH CRUSH -> GENERIC MCP -> LOOM -> "
+                    "REAL REPO PASSED"
+                )
             print(f"Changed: {TARGET_FILE}")
             print(f"Issue: {ISSUE}")
             print(f"Execution: {execution_id}")
