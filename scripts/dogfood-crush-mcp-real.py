@@ -247,6 +247,18 @@ def main() -> int:
             encoding="utf-8",
         )
 
+        negative_mode = (
+            "This is the deliberate negative-path qualification run. The Loom "
+            "verification worker is intentionally configured to fail after the "
+            "real repository change. Do not attempt to repair that verification "
+            "failure; call loom_continue_execution exactly once and report the "
+            "failed Loom execution."
+            if args.expect_failure
+            else
+            "This is the normal qualification run. If Loom verification fails, "
+            "investigate and correct the task before reporting success."
+        )
+
         prompt = f"""
 You are performing the real Loom dogfood for issue {ISSUE} in this repository.
 This is a real repository, not a fixture. Use your normal repository tools for
@@ -275,8 +287,7 @@ Execution protocol:
    harness to verify.
 7. Report the final execution_id and the repository verification result.
 
-If this is a normal run and verification fails, investigate and correct the task before reporting success.
-If this is a negative-path run, do not attempt to repair the deliberate verification failure; report the failed Loom execution.
+{negative_mode}
 """.strip()
 
         env = os.environ.copy()
