@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Dogfood a fresh Crush session against a real Loom repository.
+"""Dogfood a fresh Crush session against the real loom-ai repository.
 
-The harness intentionally keeps repository tooling on the Crush side while Loom
-owns the public execution boundary, durable execution state, orchestration, and
-verification checkpoint. It uses a disposable clone of FlossWare/loom-ai so
-that a failed experiment cannot modify the user's checkout.
+Crush owns repository inspection and editing. Loom owns the public execution
+boundary, durable state, orchestration, and the verification checkpoint.
 """
 
 from __future__ import annotations
@@ -37,8 +35,9 @@ from loom_ai.server import LoomServer
 from loom_ai.worker import WorkerContext
 
 REPO_URL = "https://github.com/FlossWare/loom-ai.git"
-TARGET_FILE = "loom_ai/server.py"
-ISSUE = "#986"
+TARGET_FILE = "docs/DOGFOOD.md"
+ISSUE = "#949"
+MARKER = "## External-agent dogfood"
 
 
 def fail(message: str) -> None:
@@ -75,47 +74,29 @@ def request_json(url: str) -> dict:
         raise RuntimeError(f"Cannot reach {url}: {exc.reason}") from exc
 
 
-def verify_real_repository(repo: Path) -> WorkerResult:
+def result_failure(worker_id: str, error: str) -> WorkerResult:
+    return WorkerResult(worker_id, WorkerStatus.FAILURE, error=error)
+
+
+def verify_repository(repo: Path) -> WorkerResult:
     file_path = repo / TARGET_FILE
     if not file_path.is_file():
-        return WorkerResult(
-            "real-repo-verify",
-            WorkerStatus.FAILURE,
-            error=f"missing {TARGET_FILE}",
-        )
+        return result_failure("real-repo-verify", f"missing {TARGET_FILE}")
 
     text = file_path.read_text(encoding="utf-8")
-    literal_count = text.count('"not found"')
-    status = run(["git", "status", "--short"], cwd=repo)
     diff = run(["git", "diff", "--name-only"], cwd=repo)
     diff_check = run(["git", "diff", "--check"], cwd=repo)
-
-    if (
-        status.returncode != 0
-        or diff.returncode != 0
-        or diff_check.returncode != 0
-    ):
-        return WorkerResult(
-            "real-repo-verify",
-            WorkerStatus.FAILURE,
-            error="git verification command failed",
-        )
-
     changed = [line for line in diff.stdout.splitlines() if line]
+
+    if diff.returncode != 0 or diff_check.returncode != 0:
+        return result_failure("real-repo-verify", "git verification command failed")
     if changed != [TARGET_FILE]:
-        return WorkerResult(
-            "real-repo-verify",
-            WorkerStatus.FAILURE,
-            error=f"unexpected changed files: {changed!r}",
+        return result_failure(
+            "real-repo-verify", f"unexpected changed files: {changed!r}"
         )
-    if literal_count > 1:
-        return WorkerResult(
-            "real-repo-verify",
-            WorkerStatus.FAILURE,
-            error=(
-                f'{literal_count} occurrences of "not found" remain '
-                f"in {TARGET_FILE}"
-            ),
+    if MARKER not in text:
+        return result_failure(
+            "real-repo-verify", f"missing {MARKER!r} in {TARGET_FILE}"
         )
 
     return WorkerResult(
@@ -124,10 +105,7 @@ def verify_real_repository(repo: Path) -> WorkerResult:
         evidence=(
             {
                 "type": "real-repository-verification",
-                "message": (
-                    f"verified {ISSUE}: {TARGET_FILE} has one or fewer "
-                    'not-found literals'
-                ),
+                "message": f"verified {ISSUE}: {TARGET_FILE} contains {MARKER!r}",
                 "changed_files": changed,
             },
         ),
@@ -146,36 +124,32 @@ class VerificationWorker:
             and item.get("message") == "real repository is clean before task"
             for item in context.evidence
         )
-        if not checkpoint_seen:
-            result = run(["git", "status", "--porcelain"], cwd=self.repo)
-            if result.returncode != 0:
-                return WorkerResult(
-                    self.worker_id,
-                    WorkerStatus.FAILURE,
-                    error=result.stderr.strip(),
-                )
-            if result.stdout.strip():
-                return WorkerResult(
-                    self.worker_id,
-                    WorkerStatus.FAILURE,
-                    error="real dogfood clone is not clean before the task",
-                )
-            return WorkerResult(
-                self.worker_id,
-                WorkerStatus.SUCCESS,
-                evidence=(
-                    {
-                        "type": "real-repository-checkpoint",
-                        "message": "real repository is clean before task",
-                    },
-                ),
+        if checkpoint_seen:
+            return verify_repository(self.repo)
+
+        result = run(["git", "status", "--porcelain"], cwd=self.repo)
+        if result.returncode != 0:
+            return result_failure(
+                self.worker_id, result.stderr.strip() or "git status failed"
             )
-        return verify_real_repository(self.repo)
+        if result.stdout.strip():
+            return result_failure(
+                self.worker_id, "real dogfood clone is not clean before the task"
+            )
+
+        return WorkerResult(
+            self.worker_id,
+            WorkerStatus.SUCCESS,
+            evidence=(
+                {
+                    "type": "real-repository-checkpoint",
+                    "message": "real repository is clean before task",
+                },
+            ),
+        )
 
 
-def evaluate(
-    result: WorkerResult, _context: WorkerContext
-) -> WorkerEvaluation:
+def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
     if result.successful:
         return WorkerEvaluation(
             ArbiterDecision.COMPLETE,
@@ -189,29 +163,22 @@ def evaluate(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
-        )
+        description="Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
     )
-    parser.add_argument("--repo", default=REPO_URL, help="Git repository URL")
     parser.add_argument(
-        "--model",
-        default=None,
-        help="Optional Crush model passed to crush run",
+        "--model", default=None, help="Optional Crush model passed to crush run"
     )
     args = parser.parse_args()
 
     crush = shutil.which("crush")
+    git = shutil.which("git")
     if crush is None:
         fail("crush is not installed or is not on PATH")
-    git = shutil.which("git")
     if git is None:
         fail("git is not installed or is not on PATH")
 
-    python = root / ".venv" / "bin" / "python"
+    python = Path(sys.executable)
     mcp_server = root / "scripts" / "loom_mcp_server.py"
-    if not python.is_file():
-        fail(f"missing project Python environment: {python}")
     if not mcp_server.is_file():
         fail(f"missing generic MCP server: {mcp_server}")
 
@@ -219,19 +186,10 @@ def main() -> int:
         temp_root = Path(temp)
         repo = temp_root / "loom-ai"
         clone = run(
-            [
-                git,
-                "clone",
-                "--depth",
-                "1",
-                "--branch",
-                "main",
-                args.repo,
-                str(repo),
-            ]
+            [git, "clone", "--depth", "1", "--branch", "main", REPO_URL, str(repo)]
         )
         if clone.returncode != 0:
-            fail(f"could not clone {args.repo}: {clone.stderr.strip()}")
+            fail(f"could not clone {REPO_URL}: {clone.stderr.strip()}")
 
         clean = run(["git", "status", "--porcelain"], cwd=repo)
         if clean.returncode != 0 or clean.stdout.strip():
@@ -248,13 +206,11 @@ def main() -> int:
         )
         http_server = server.start()
         thread = threading.Thread(
-            target=http_server.serve_forever,
-            daemon=True,
+            target=http_server.serve_forever, daemon=True
         )
         thread.start()
 
-        crushrc = repo / ".crushrc"
-        crushrc.write_text(
+        (repo / ".crushrc").write_text(
             "# Disposable real-repository Loom dogfood configuration.\n"
             f'mcp add loom --command "{python}" --args "{mcp_server}" '
             f'--env LOOM_URL "http://127.0.0.1:{server.port}" --timeout 30\n',
@@ -267,25 +223,29 @@ This is a real repository, not a fixture. Use your normal repository tools for
 inspection, editing, shell commands, and git. Use the generic Loom MCP for
 orchestration and verification. Do not call Loom Python internals.
 
-Task: resolve {ISSUE}: define a constant instead of duplicating the literal
-"not found" in {TARGET_FILE}. Keep the change narrowly scoped. Do not modify
-unrelated files. Do not change the public behavior.
+Task: make one small, real documentation improvement directly related to {ISSUE}.
+In {TARGET_FILE}, add a concise section titled "{MARKER}" explaining that
+external coding agents such as Crush consume Loom's agent-neutral public
+boundary, that repository inspection/edit/test tooling remains on the client
+side unless a Loom capability explicitly requires it, and that Loom owns
+execution orchestration, verification, evidence, provenance, and durable
+execution state. Keep the wording consistent with the repository's existing
+architecture documents. Do not modify unrelated files.
 
 Execution protocol:
 1. Call loom_submit_intent exactly once before editing, using execution_id
    "{execution_id}" and intent_id "{intent_id}". Include provenance with
    client=fresh-crush, issue={ISSUE}, and task_path={TARGET_FILE}.
-2. Inspect the repository and the relevant code.
-3. Make the real code change with your repository edit tool.
-4. Run the appropriate tests/validation for the change.
+2. Inspect the repository and the relevant documentation.
+3. Make the real documentation change with your repository edit tool.
+4. Run appropriate validation, including git diff --check.
 5. Call loom_continue_execution exactly once with execution_id
-   "{execution_id}". Do not claim success if that Loom verification fails.
+   "{execution_id}". Do not claim success if Loom verification fails.
 6. Do not commit or push the change; leave it in the working tree for the
    harness to verify.
 7. Report the final execution_id and the repository verification result.
 
-The Loom checkpoint is authoritative for the workflow result. If verification
-fails, investigate and correct the task before reporting success.
+If verification fails, investigate and correct the task before reporting success.
 """.strip()
 
         env = os.environ.copy()
@@ -321,33 +281,26 @@ fails, investigate and correct the task before reporting success.
             print("\n==> Durable Loom execution")
             print(json.dumps(execution, indent=2, sort_keys=True))
             if execution.get("status") != "success":
-                fail(
-                    f"Loom execution status is {execution.get('status')!r}"
-                )
+                fail(f"Loom execution status is {execution.get('status')!r}")
             if execution.get("intent_id") != intent_id:
                 fail("Loom intent_id does not match")
 
             provenance = execution.get("provenance", {})
-            expected_provenance = {
+            for key, expected in {
                 "client": "fresh-crush",
                 "issue": ISSUE,
                 "task_path": TARGET_FILE,
-            }
-            for key, expected in expected_provenance.items():
+            }.items():
                 if provenance.get(key) != expected:
                     fail(f"missing or incorrect provenance {key!r}")
 
             final_text = (repo / TARGET_FILE).read_text(encoding="utf-8")
-            if final_text.count('"not found"') > 1:
-                fail(
-                    f'{TARGET_FILE} still duplicates the "not found" literal'
-                )
+            if MARKER not in final_text:
+                fail(f"missing {MARKER!r} in {TARGET_FILE}")
 
             diff = run(["git", "diff", "--name-only"], cwd=repo)
             if diff.stdout.splitlines() != [TARGET_FILE]:
-                fail(
-                    f"unexpected repository changes: {diff.stdout.splitlines()!r}"
-                )
+                fail(f"unexpected repository changes: {diff.stdout.splitlines()!r}")
 
             diff_check = run(["git", "diff", "--check"], cwd=repo)
             if diff_check.returncode != 0:
@@ -360,10 +313,7 @@ fails, investigate and correct the task before reporting success.
             print(f"Changed: {TARGET_FILE}")
             print(f"Issue: {ISSUE}")
             print(f"Execution: {execution_id}")
-            print(
-                "Independent checks: changed-file scope, literal "
-                "deduplication, git diff --check"
-            )
+            print("Independent checks: changed-file scope, marker, git diff --check")
             return 0
         finally:
             server.close()
