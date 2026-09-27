@@ -216,8 +216,17 @@ def main() -> int:
         )
         thread.start()
 
+        mcp_check = run([str(python), "-c", "import mcp"])
+        if mcp_check.returncode != 0:
+            fail(
+                f"{python} cannot import mcp; install the project MCP dependency "
+                "and rerun with that interpreter"
+            )
+
+        crush_data = temp_root / "crush-data"
         (repo / ".crushrc").write_text(
             "# Disposable real-repository Loom dogfood configuration.\n"
+            f'option data-directory "{crush_data}"\n'
             f'mcp add loom --command "{python}" --args "{mcp_server}" '
             f'--env LOOM_URL "http://127.0.0.1:{server.port}" --timeout 30\n',
             encoding="utf-8",
