@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
 from uuid import uuid4
@@ -55,8 +56,16 @@ def request_json(url: str, method: str = "GET", payload: dict | None = None) -> 
         headers=headers,
         method=method,
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(
+            f"HTTP {exc.code} from {url}: {detail or exc.reason}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Cannot reach {url}: {exc.reason}") from exc
 
 
 def evaluate(result, _context) -> WorkerEvaluation:
@@ -87,6 +96,21 @@ def main() -> int:
         )
 
     mcp_server = root / "scripts" / "loom_mcp_server.py"
+
+    mcp_check = subprocess.run(
+        [str(python), "-c", "import mcp; print(mcp.__version__)"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if mcp_check.returncode != 0:
+        detail = (mcp_check.stderr or mcp_check.stdout).strip()
+        fail(
+            "project Python cannot import the MCP SDK. "
+            "Install it with .venv/bin/python -m pip install -e '.[mcp]'. "
+            f"Python: {python}. Detail: {detail}"
+        )
+    mcp_version = mcp_check.stdout.strip()
 
     with tempfile.TemporaryDirectory(prefix="loom-crush-mcp-") as temp:
         temp_root = Path(temp)
@@ -175,6 +199,7 @@ Do not perform the repository edit yourself.
         print("==> Crush -> generic Loom MCP -> Loom HTTP dogfood")
         print(f"Crush: {crush}")
         print(f"MCP Python: {python}")
+        print(f"MCP SDK: {mcp_version}")
         print(
             "Crush version:",
             subprocess.run(
