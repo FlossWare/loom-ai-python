@@ -135,8 +135,12 @@ class VerificationWorker:
         self.repo = repo
 
     def execute(self, context: WorkerContext) -> WorkerResult:
-        phase = context.state.get("phase", "initial")
-        if phase == "initial":
+        checkpoint_seen = any(
+            isinstance(item, dict)
+            and item.get("message") == "real repository is clean before task"
+            for item in context.evidence
+        )
+        if not checkpoint_seen:
             result = run(["git", "status", "--porcelain"], cwd=self.repo)
             if result.returncode != 0:
                 return WorkerResult(
