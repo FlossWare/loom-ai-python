@@ -155,6 +155,63 @@ def test_terminal_execution_cannot_be_continued(tmp_path) -> None:
     assert len(worker.contexts) == 1
 
 
+def test_http_terminal_continuation_returns_conflict_without_mutation(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+
+    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
+
+    server = LoomServer(
+        Arbiter([worker], evaluate, max_retries=0),
+        port=0,
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    instance = server.start()
+    thread = Thread(target=instance.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://{server.host}:{server.port}"
+    try:
+        submit = Request(
+            f"{base_url}/intents",
+            data=json.dumps(
+                {"goal": "finish once", "execution_id": "terminal-http-execution"}
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(submit) as response:
+            first = json.load(response)
+        assert first["status"] == "success"
+
+        with urlopen(f"{base_url}/executions/terminal-http-execution") as response:
+            before = json.load(response)
+        assert before["lifecycle"] == "completed"
+
+        continue_request = Request(
+            f"{base_url}/executions/terminal-http-execution/continue",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as captured:
+            urlopen(continue_request)
+        assert captured.value.code == 409
+        error = json.load(captured.value)
+        assert error["execution_id"] == "terminal-http-execution"
+        assert "not resumable" in error["error"]
+
+        with urlopen(f"{base_url}/executions/terminal-http-execution") as response:
+            after = json.load(response)
+        assert after["lifecycle"] == "completed"
+        assert after["result"] == before["result"]
+        assert len(worker.contexts) == 1
+    finally:
+        server.close()
+        thread.join(timeout=2)
+
+
 def test_continuation_preserves_state_metadata_and_prior_structured_result(
     tmp_path,
 ) -> None:
