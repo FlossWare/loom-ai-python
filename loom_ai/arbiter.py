@@ -57,7 +57,8 @@ class Arbiter:
 
         index = 0
         while index < len(queue):
-            if context.cancellation_requested:
+            control_cause = context.termination_cause
+            if control_cause == "cancelled":
                 evidence.append(
                     {
                         "type": "cancellation-observed",
@@ -67,7 +68,7 @@ class Arbiter:
                 return self._result(
                     outputs, evidence, "cancelled", context.cancellation_token.reason
                 )
-            if context.deadline_expired:
+            if control_cause == "deadline_exceeded":
                 evidence.append({"type": "deadline-exceeded"})
                 return self._result(
                     outputs,
@@ -92,7 +93,8 @@ class Arbiter:
                 }
             )
 
-            if context.cancellation_requested:
+            control_cause = context.termination_cause
+            if control_cause == "cancelled":
                 evidence.append(
                     {
                         "type": "cancellation-observed",
@@ -102,7 +104,7 @@ class Arbiter:
                 return self._result(
                     outputs, evidence, "cancelled", context.cancellation_token.reason
                 )
-            if context.deadline_expired:
+            if control_cause == "deadline_exceeded":
                 evidence.append({"type": "deadline-exceeded"})
                 return self._result(
                     outputs,
