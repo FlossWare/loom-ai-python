@@ -254,7 +254,9 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
     with TemporaryDirectory() as state_dir:
 
         def build_server() -> LoomServer:
-            def evaluate(_result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+            def evaluate(
+                _result: WorkerResult, _context: WorkerContext
+            ) -> WorkerEvaluation:
                 return WorkerEvaluation(
                     ArbiterDecision.COMPLETE,
                     reason="restart recovery",
