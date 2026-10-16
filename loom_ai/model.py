@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from types import MappingProxyType
 from typing import Mapping, Protocol, runtime_checkable
 
@@ -19,12 +20,20 @@ class ModelRequest:
     prompt: str
     model: str = "default"
     metadata: Mapping[str, str] = field(default_factory=dict)
+    timeout_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not self.prompt.strip():
             raise ValueError("ModelRequest prompt must not be empty")
         if not self.model.strip():
             raise ValueError("ModelRequest model must not be empty")
+        if self.timeout_seconds is not None and (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or not isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+        ):
+            raise ValueError("ModelRequest timeout_seconds must be a positive finite number")
         object.__setattr__(self, "metadata", _freeze(self.metadata))
 
 
@@ -57,7 +66,9 @@ class ModelProvider(Protocol):
     """Stable synchronous provider-neutral model capability used by Workers.
 
     Async execution or threading bridges belong in provider adapters, not in
-    this language-neutral contract.
+    this language-neutral contract. When a request supplies timeout_seconds, a
+    provider MUST apply it at its transport boundary and raise TimeoutError when
+    the request exceeds that budget; a provider MUST NOT silently ignore it.
     """
 
     @property
