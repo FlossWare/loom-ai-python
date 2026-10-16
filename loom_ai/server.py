@@ -202,6 +202,7 @@ class LoomServer:
                             "criteria_version",
                             "evaluator",
                             "evaluator_version",
+                            "result_reference",
                         )
                         for field_name in optional_strings:
                             if payload.get(field_name) is not None and not isinstance(
@@ -214,6 +215,7 @@ class LoomServer:
                             criteria_version=payload.get("criteria_version"),
                             evaluator=payload.get("evaluator"),
                             evaluator_version=payload.get("evaluator_version"),
+                            result_reference=payload.get("result_reference"),
                             evidence=tuple(evidence),
                             provenance=provenance,
                         )
