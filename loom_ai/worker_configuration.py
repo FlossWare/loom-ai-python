@@ -201,6 +201,12 @@ def validate_worker_configuration(
         else None
     )
     if configured_allowed is not None and trusted_allowed is not None:
+        widened = configured_allowed - trusted_allowed
+        if widened:
+            raise WorkerConfigurationError(
+                "policy does not allow configured capabilities: "
+                + ", ".join(sorted(widened))
+            )
         allowed = configured_allowed & trusted_allowed
     else:
         allowed = configured_allowed if trusted_allowed is None else trusted_allowed
