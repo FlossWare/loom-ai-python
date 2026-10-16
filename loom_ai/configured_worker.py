@@ -120,6 +120,24 @@ class ConfiguredModelWorker:
             )
 
             elapsed = monotonic() - started
+            cause = configured_context.termination_cause
+            if cause is not None:
+                return _failure(
+                    self.worker_id,
+                    "execution cancelled"
+                    if cause == "cancelled"
+                    else "deadline exceeded",
+                    tuple(evidence)
+                    + ({"type": "configured-worker-termination", "cause": cause},),
+                    {
+                        "termination_cause": cause,
+                        "attempts": attempt,
+                        "elapsed_seconds": elapsed,
+                    },
+                    status=WorkerStatus.CANCELLED
+                    if cause == "cancelled"
+                    else WorkerStatus.FAILED,
+                )
             if elapsed > self.configuration.limits.max_duration_seconds:
                 return _failure(
                     self.worker_id,
