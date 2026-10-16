@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from io import BytesIO
+from urllib.error import HTTPError
+
 import pytest
 
 from scripts import loom_mcp_server
@@ -20,9 +23,6 @@ def test_http_client_reports_timeout_with_configured_limit(monkeypatch) -> None:
 
 
 def test_http_client_preserves_http_error_details(monkeypatch) -> None:
-    from urllib.error import HTTPError
-    from io import BytesIO
-
     def reject(*_args, **_kwargs):
         raise HTTPError(
             "http://127.0.0.1:8000/executions/execution-1",
