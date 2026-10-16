@@ -457,15 +457,20 @@ def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
 
 
 def _result_payload(result: WorkerResult) -> dict[str, Any]:
-    return {
+    structured_result = {
         "worker_id": result.worker_id,
         "status": result.status.value,
-        "lifecycle": "completed",
-        "evaluation": EvaluationRecord().to_dict(),
         "output": result.output,
         "evidence": result.evidence,
         "error": result.error,
         "metadata": result.metadata,
+    }
+    return {
+        **structured_result,
+        "status": result.status.value,
+        "lifecycle": "completed",
+        "evaluation": EvaluationRecord().to_dict(),
+        "result": structured_result,
     }
 
 
