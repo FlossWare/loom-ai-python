@@ -179,12 +179,14 @@ class Orchestrator:
                 if control_cause == "cancelled"
                 else None
             )
+            latest = self.execution_store.load(actual_id)
             self.execution_store.save(
                 _state_from_result(
                     actual_id,
                     intent,
                     result,
                     phase="initial",
+                    prior=latest,
                     deadline=absolute_deadline,
                     cancellation=cancellation,
                 )
@@ -453,13 +455,14 @@ class Orchestrator:
                 result = _cancelled_result(result, token)
             elif control_cause == "deadline_exceeded":
                 result = _deadline_result(evidence=result.evidence, output=result.output)
+            latest = store.load(execution_id) or execution
             store.save(
                 _state_from_result(
                     execution_id,
                     execution.intent,
                     result,
                     phase="continued",
-                    prior=execution,
+                    prior=latest,
                     deadline=deadline,
                     cancellation=(
                         _cancellation_metadata(token)
