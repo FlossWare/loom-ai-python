@@ -60,14 +60,28 @@ def validate_worker_configuration(
     _keys(
         value,
         {
-            "schema_version", "worker_id", "purpose", "model_gateway",
-            "instructions", "tools", "capabilities", "policy", "limits", "metadata",
+            "schema_version",
+            "worker_id",
+            "purpose",
+            "model_gateway",
+            "instructions",
+            "tools",
+            "capabilities",
+            "policy",
+            "limits",
+            "metadata",
         },
         "configuration",
     )
     required = {
-        "schema_version", "worker_id", "purpose", "model_gateway",
-        "instructions", "capabilities", "policy", "limits",
+        "schema_version",
+        "worker_id",
+        "purpose",
+        "model_gateway",
+        "instructions",
+        "capabilities",
+        "policy",
+        "limits",
     }
     missing = required - value.keys()
     if missing:
@@ -75,7 +89,9 @@ def validate_worker_configuration(
             f"configuration missing required fields: {', '.join(sorted(missing))}"
         )
     if value["schema_version"] != "0.1":
-        raise WorkerConfigurationError("unsupported Worker configuration schema_version")
+        raise WorkerConfigurationError(
+            "unsupported Worker configuration schema_version"
+        )
 
     worker_id = _nonempty_string(value["worker_id"], "worker_id")
     purpose = _nonempty_string(value["purpose"], "purpose")
@@ -86,13 +102,17 @@ def validate_worker_configuration(
     _keys(gateway, {"gateway_ref", "selection_ref"}, "model_gateway")
     for key in ("gateway_ref", "selection_ref"):
         if key not in gateway:
-            raise WorkerConfigurationError(f"model_gateway missing required field: {key}")
+            raise WorkerConfigurationError(
+                f"model_gateway missing required field: {key}"
+            )
     gateway_ref = _nonempty_string(gateway["gateway_ref"], "model_gateway.gateway_ref")
     selection_ref = _nonempty_string(
         gateway["selection_ref"], "model_gateway.selection_ref"
     )
     if gateway_ref not in gateway_selections:
-        raise WorkerConfigurationError(f"unknown model gateway reference: {gateway_ref}")
+        raise WorkerConfigurationError(
+            f"unknown model gateway reference: {gateway_ref}"
+        )
     if selection_ref not in gateway_selections[gateway_ref]:
         raise WorkerConfigurationError(
             f"unknown model selection reference for gateway {gateway_ref}: {selection_ref}"
@@ -128,7 +148,12 @@ def validate_worker_configuration(
         raise WorkerConfigurationError("policy must be an object")
     _keys(
         policy,
-        {"policy_ref", "approval_required", "allowed_capabilities", "denied_capabilities"},
+        {
+            "policy_ref",
+            "approval_required",
+            "allowed_capabilities",
+            "denied_capabilities",
+        },
         "policy",
     )
     if "policy_ref" not in policy or "approval_required" not in policy:
@@ -145,7 +170,9 @@ def validate_worker_configuration(
         else None
     )
     denied = set(
-        _string_list(policy.get("denied_capabilities", []), "policy.denied_capabilities")
+        _string_list(
+            policy.get("denied_capabilities", []), "policy.denied_capabilities"
+        )
     )
 
     declared_set = set(declared)
@@ -227,10 +254,11 @@ def _string_list(
     if not isinstance(value, list):
         raise WorkerConfigurationError(f"{path} must be an array")
     if len(value) < minimum:
-        raise WorkerConfigurationError(f"{path} must contain at least {minimum} item(s)")
+        raise WorkerConfigurationError(
+            f"{path} must contain at least {minimum} item(s)"
+        )
     values = [
-        _nonempty_string(item, f"{path}[{index}]")
-        for index, item in enumerate(value)
+        _nonempty_string(item, f"{path}[{index}]") for index, item in enumerate(value)
     ]
     if unique and len(set(values)) != len(values):
         raise WorkerConfigurationError(f"{path} must not contain duplicates")
