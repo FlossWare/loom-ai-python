@@ -25,11 +25,13 @@ class CancellationToken:
     def __init__(self) -> None:
         self._event = Event()
         self._reason = "cancellation requested"
+        self._requested_at: datetime | None = None
 
     def cancel(self, reason: str = "cancellation requested") -> None:
         """Request cancellation; repeated requests are safe and idempotent."""
         if not self._event.is_set():
             self._reason = reason
+            self._requested_at = datetime.now(timezone.utc)
             self._event.set()
 
     @property
@@ -41,6 +43,11 @@ class CancellationToken:
     def reason(self) -> str:
         """The first cancellation reason supplied to this token."""
         return self._reason
+
+    @property
+    def requested_at(self) -> datetime | None:
+        """UTC instant at which cancellation was first requested."""
+        return self._requested_at
 
     def wait(self, timeout: float | None = None) -> bool:
         """Wait for cancellation, returning whether it was requested."""
@@ -79,6 +86,23 @@ class WorkerContext:
         return self.deadline is not None and datetime.now(timezone.utc) >= (
             self.deadline.astimezone(timezone.utc)
         )
+
+    @property
+    def termination_cause(self) -> str | None:
+        """Resolve cancellation/deadline races by their first recorded instant."""
+        if self.deadline_expired:
+            requested_at = self.cancellation_token.requested_at
+            if (
+                requested_at is None
+                or self.deadline is None
+                or requested_at >= self.deadline.astimezone(timezone.utc)
+            ):
+                return "deadline_exceeded"
+        if self.cancellation_requested:
+            return "cancelled"
+        if self.deadline_expired:
+            return "deadline_exceeded"
+        return None
 
     def with_state(self, **updates: Any) -> "WorkerContext":
         """Return a context with explicit state updates."""
