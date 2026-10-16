@@ -30,31 +30,36 @@ def invoke_capability(
 
     A configuration reference is not itself executable authority. The caller
     must supply the runtime's trusted binding registry. When the validated
-    policy requires approval, the caller must provide an explicit boolean
-    approval result for this invocation. This function intentionally does not
-    infer approval from config metadata or from a truthy non-boolean value.
+    policy requires approval, a trusted runtime-supplied authorizer must
+    explicitly approve this invocation. A request cannot bypass the check by
+    carrying a caller-provided approval boolean.
     """
     if not isinstance(capability_ref, str) or not capability_ref.strip():
         raise CapabilityInvocationError("capability reference must be non-empty")
     if capability_ref not in configuration.capabilities:
-        raise CapabilityInvocationError("capability is not authorized by Worker config")
+        raise CapabilityInvocationError(
+            "capability is not authorized by Worker config"
+        )
+    if not isinstance(arguments, Mapping):
+        raise CapabilityInvocationError("capability arguments must be an object")
     if configuration.approval_required:
         if approval_authorizer is None:
             raise CapabilityInvocationError(
                 "capability invocation requires an approval authorizer"
             )
         try:
-            approved = approval_authorizer(configuration, capability_ref, dict(arguments))
+            approved = approval_authorizer(
+                configuration, capability_ref, dict(arguments)
+            )
         except Exception as exc:
-            raise CapabilityInvocationError("capability approval check failed") from exc
+            raise CapabilityInvocationError(
+                "capability approval check failed"
+            ) from exc
         if approved is not True:
             raise CapabilityInvocationError("capability invocation was not approved")
     binding = bindings.get(capability_ref)
     if binding is None or not callable(binding):
         raise CapabilityInvocationError("authorized capability has no runtime binding")
-    if not isinstance(arguments, Mapping):
-        raise CapabilityInvocationError("capability arguments must be an object")
-
     # Do not expose arbitrary binding exceptions as capability output or
     # evidence. Preserve the cause for trusted diagnostics at the caller.
     try:
