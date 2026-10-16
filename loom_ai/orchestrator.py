@@ -76,7 +76,7 @@ class Orchestrator:
         deadline: datetime | str | None = None,
     ) -> OrchestratorSubmission:
         """Submit an Intent with optional durable identity and absolute deadline."""
-        absolute_deadline = _parse_deadline(deadline)
+        absolute_deadline = parse_deadline(deadline)
         if absolute_deadline is not None and _is_expired(absolute_deadline):
             result = _deadline_result()
             if self.execution_store is None:
@@ -280,7 +280,7 @@ class Orchestrator:
             execution = store.load(execution_id)
             if execution is None:
                 raise KeyError(f"execution not found: {execution_id}")
-            deadline = _parse_deadline(execution.metadata.get("deadline"))
+            deadline = parse_deadline(execution.metadata.get("deadline"))
             prior_cancellation = execution.metadata.get("cancellation")
             if isinstance(prior_cancellation, dict) and prior_cancellation.get(
                 "requested"
@@ -428,7 +428,7 @@ class Orchestrator:
         return self.execution_store
 
 
-def _parse_deadline(value: datetime | str | None) -> datetime | None:
+def parse_deadline(value: datetime | str | None) -> datetime | None:
     """Parse an absolute RFC 3339 deadline and normalize it to UTC."""
     if value is None:
         return None
