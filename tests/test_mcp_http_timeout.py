@@ -43,7 +43,9 @@ def test_http_client_preserves_http_error_details(monkeypatch) -> None:
 
 @pytest.mark.parametrize("timeout", [0, -1])
 def test_http_client_rejects_non_positive_timeout(timeout: int) -> None:
-    with pytest.raises(ValueError, match="timeout must be a positive number of seconds"):
+    with pytest.raises(
+        ValueError, match="timeout must be a positive number of seconds"
+    ):
         loom_mcp_server.LoomHTTPClient("http://127.0.0.1:8000", timeout=timeout)
 
 
