@@ -208,6 +208,47 @@ def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
     )
 
 
+def verify_durable_result(
+    execution: dict,
+    *,
+    expected_status: str,
+    expect_failure: bool,
+) -> None:
+    """Require durable Result evidence, including the deliberate negative path."""
+    result = execution.get("result")
+    if not isinstance(result, dict):
+        fail("durable execution is missing its structured Result")
+    if result.get("status") != expected_status:
+        fail(
+            f"structured Result status is {result.get('status')!r}; "
+            f"expected {expected_status!r}"
+        )
+
+    if expect_failure:
+        outputs = result.get("output")
+        if not isinstance(outputs, list) or not any(
+            isinstance(item, dict)
+            and "deliberate negative-path" in str(item.get("error", ""))
+            for item in outputs
+        ):
+            fail("negative-path Result does not preserve the deliberate verifier failure")
+        return
+
+    evidence = result.get("evidence")
+    if not isinstance(evidence, list):
+        fail("successful Result is missing structured evidence")
+    verification = [
+        item
+        for item in evidence
+        if isinstance(item, dict)
+        and item.get("type") == "real-repository-verification"
+    ]
+    if len(verification) != 1:
+        fail("successful Result must contain exactly one repository-verification record")
+    if verification[0].get("changed_files") != [TARGET_FILE]:
+        fail("repository-verification evidence has an unexpected changed-file scope")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
@@ -395,6 +436,11 @@ Execution protocol:
                     f"Loom execution status is {execution.get('status')!r}; "
                     f"expected {expected_execution_status!r}"
                 )
+            verify_durable_result(
+                execution,
+                expected_status=expected_execution_status,
+                expect_failure=args.expect_failure,
+            )
             if execution.get("intent_id") != intent_id:
                 fail("Loom intent_id does not match")
 

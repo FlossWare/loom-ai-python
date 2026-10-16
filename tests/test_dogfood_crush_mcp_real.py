@@ -117,6 +117,65 @@ def test_negative_qualification_forces_verification_failure(
     assert "deliberate negative-path" in result.error
 
 
+def test_durable_result_requires_repository_verification_evidence() -> None:
+    execution = {
+        "result": {
+            "status": "success",
+            "evidence": [
+                {
+                    "type": "real-repository-verification",
+                    "changed_files": [DOGFOOD.TARGET_FILE],
+                }
+            ],
+        }
+    }
+
+    DOGFOOD.verify_durable_result(
+        execution,
+        expected_status="success",
+        expect_failure=False,
+    )
+
+
+def test_durable_result_rejects_success_without_verification_evidence() -> None:
+    execution = {
+        "result": {
+            "status": "success",
+            "evidence": [{"type": "worker-result"}],
+        }
+    }
+
+    try:
+        DOGFOOD.verify_durable_result(
+            execution,
+            expected_status="success",
+            expect_failure=False,
+        )
+    except SystemExit as exc:
+        assert "repository-verification record" in str(exc)
+        return
+    raise AssertionError("successful Result without verification evidence was accepted")
+
+
+def test_negative_durable_result_must_preserve_verifier_failure() -> None:
+    execution = {
+        "result": {
+            "status": "failed",
+            "output": [
+                {
+                    "error": "deliberate negative-path verification failure",
+                }
+            ],
+        }
+    }
+
+    DOGFOOD.verify_durable_result(
+        execution,
+        expected_status="failed",
+        expect_failure=True,
+    )
+
+
 def test_run_enforces_the_requested_subprocess_timeout() -> None:
     try:
         DOGFOOD.run(
