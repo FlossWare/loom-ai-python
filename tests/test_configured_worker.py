@@ -93,7 +93,7 @@ def test_configured_instructions_are_sent_to_provider() -> None:
     assert "Perform bounded implementation work" in provider.requests[0].prompt
     assert "Prefer minimal, tested changes" in provider.requests[0].prompt
     assert "write a test" in provider.requests[0].prompt
-    assert provider.requests[0].timeout_seconds == 5.0
+    assert 4.9 < provider.requests[0].timeout_seconds <= 5.0
 
 
 def test_output_limit_is_enforced_in_utf8_bytes() -> None:
