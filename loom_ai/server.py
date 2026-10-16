@@ -14,6 +14,7 @@ from enum import Enum
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
@@ -129,11 +130,12 @@ class LoomServer:
                 self.wfile.write(body)
 
             def do_GET(self) -> None:  # noqa: N802
-                if self.path == "/health":
+                request_path = urlsplit(self.path).path
+                if request_path == "/health":
                     self._send(HTTPStatus.OK, {"status": "ok"})
                     return
-                if self.path.startswith("/executions/"):
-                    execution_id = self.path.removeprefix("/executions/")
+                if request_path.startswith("/executions/"):
+                    execution_id = unquote(request_path.removeprefix("/executions/"))
                     if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
@@ -154,11 +156,12 @@ class LoomServer:
                 self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
             def do_POST(self) -> None:  # noqa: N802
-                if self.path.startswith("/executions/") and self.path.endswith(
+                request_path = urlsplit(self.path).path
+                if request_path.startswith("/executions/") and request_path.endswith(
                     "/cancel"
                 ):
                     execution_id = (
-                        self.path.removeprefix("/executions/")
+                        request_path.removeprefix("/executions/")
                         .removesuffix("/cancel")
                         .strip("/")
                     )
@@ -204,11 +207,11 @@ class LoomServer:
                     self._send(HTTPStatus.OK, response)
                     return
 
-                if self.path.startswith("/executions/") and self.path.endswith(
+                if request_path.startswith("/executions/") and request_path.endswith(
                     "/continue"
                 ):
                     execution_id = (
-                        self.path.removeprefix("/executions/")
+                        request_path.removeprefix("/executions/")
                         .removesuffix("/continue")
                         .strip("/")
                     )
@@ -239,7 +242,7 @@ class LoomServer:
                     )
                     return
 
-                if self.path != "/intents":
+                if request_path != "/intents":
                     self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                     return
 
