@@ -94,6 +94,8 @@ class RecordingOrchestrator:
 
     def observe(self, execution_id: str) -> ExecutionState:
         self.calls.append(("observe", execution_id))
+        if execution_id != "exec-1":
+            raise KeyError(f"execution not found: {execution_id}")
         return ExecutionState(
             execution_id=execution_id,
             intent=self.intent,
@@ -130,6 +132,14 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
             observed = json.load(response)
         assert observed["execution_id"] == "exec-1"
 
+        try:
+            urlopen(f"{base_url}/executions/missing")
+        except Exception as exc:
+            assert getattr(exc, "code", None) == 404
+            assert json.load(exc)["error"] == "execution not found"
+        else:
+            raise AssertionError("expected missing execution to return HTTP 404")
+
         request = Request(
             f"{base_url}/executions/exec-1/continue",
             data=b"{}",
@@ -142,6 +152,7 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
 
         assert [call[0] for call in service.calls] == [
             "submit",
+            "observe",
             "observe",
             "continue",
         ]
