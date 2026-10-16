@@ -2,7 +2,12 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 .venv/
+venv/
 build/
 dist/
+wheels/
 *.egg-info/
+.loom-dogfood-state/
