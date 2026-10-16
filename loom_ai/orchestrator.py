@@ -223,6 +223,8 @@ class Orchestrator:
                 raise ValueError("evaluation execution_id does not match target execution")
             if evaluation.intent_id not in (None, execution.intent.intent_id):
                 raise ValueError("evaluation intent_id does not match execution Intent")
+            if not execution.terminal or execution.result is None:
+                raise ValueError("evaluation requires a terminal execution result")
             record = evaluation.finalized(
                 execution_id=execution_id,
                 intent_id=execution.intent.intent_id,
