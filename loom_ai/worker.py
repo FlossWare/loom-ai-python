@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
-from threading import Event
+from threading import Event, Lock
 from typing import Any, Mapping, Protocol
 
 from loom_ai.intent import Intent
@@ -24,15 +24,17 @@ class CancellationToken:
 
     def __init__(self) -> None:
         self._event = Event()
+        self._lock = Lock()
         self._reason = "cancellation requested"
         self._requested_at: datetime | None = None
 
     def cancel(self, reason: str = "cancellation requested") -> None:
         """Request cancellation; repeated requests are safe and idempotent."""
-        if not self._event.is_set():
-            self._reason = reason
-            self._requested_at = datetime.now(timezone.utc)
-            self._event.set()
+        with self._lock:
+            if not self._event.is_set():
+                self._reason = reason
+                self._requested_at = datetime.now(timezone.utc)
+                self._event.set()
 
     @property
     def requested(self) -> bool:
