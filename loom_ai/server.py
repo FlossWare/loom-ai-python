@@ -16,7 +16,11 @@ from typing import Any
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
-from loom_ai.execution_state import ExecutionState, ExecutionStateError, ExecutionStateStore
+from loom_ai.execution_state import (
+    ExecutionState,
+    ExecutionStateError,
+    ExecutionStateStore,
+)
 from loom_ai.orchestrator import Orchestrator
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
