@@ -150,3 +150,32 @@ def test_model_worker_composes_through_arbiter() -> None:
 
     assert result.successful
     assert result.output[0].output == "fake response: exercise Stage 5"
+
+class ContradictoryProvenanceProvider:
+    provider_id = "recording"
+
+    def __init__(self, provenance: dict[str, str]) -> None:
+        self.provenance = provenance
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        return ModelResponse(
+            text="recorded result",
+            provider="recording",
+            model="test-model",
+            provenance=self.provenance,
+        )
+
+
+def test_model_worker_rejects_contradictory_response_provenance() -> None:
+    for provenance in (
+        {"provider": "forged-provider", "model": "test-model"},
+        {"provider": "recording", "model": "forged-model"},
+    ):
+        result = ModelWorker(
+            ContradictoryProvenanceProvider(provenance),
+            model="test-model",
+        ).execute(WorkerContext(intent=Intent(goal="verify provenance")))
+
+        assert result.status is WorkerStatus.FAILED
+        assert result.error == "model provider invocation failed"
+
