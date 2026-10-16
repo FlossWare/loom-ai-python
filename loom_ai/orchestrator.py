@@ -203,8 +203,7 @@ def _json_value(value: Any) -> Any:
         return value.value
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _json_value(getattr(value, item.name))
-            for item in fields(value)
+            item.name: _json_value(getattr(value, item.name)) for item in fields(value)
         }
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
