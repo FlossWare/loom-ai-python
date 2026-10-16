@@ -111,7 +111,7 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
             )
             async with Client(mcp_process) as client:
                 tools = await client.list_tools()
-                assert len(tools.tools) == 3
+                assert len(tools.tools) == 4
 
                 submitted = await client.call_tool(
                     "loom_submit_intent",
@@ -136,6 +136,17 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 continued_payload = json.loads(continued.content[0].text)
                 assert continued_payload["execution_id"] == execution_id
                 assert continued_payload["status"] == "success"
+
+                cancelled = await client.call_tool(
+                    "loom_cancel_execution",
+                    {"execution_id": execution_id, "reason": "integration test"},
+                )
+                cancelled_payload = json.loads(cancelled.content[0].text)
+                assert cancelled_payload["execution_id"] == execution_id
+                assert cancelled_payload["status"] in {
+                    "cancellation_requested",
+                    "cancelled",
+                }
 
         try:
             asyncio.run(run())
