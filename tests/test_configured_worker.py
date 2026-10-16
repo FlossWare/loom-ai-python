@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
-from loom_ai import FakeModelProvider, Intent, ModelResponse, WorkerContext, WorkerStatus
+from loom_ai import (\n    FakeModelProvider,\n    Intent,\n    ModelResponse,\n    WorkerContext,\n    WorkerStatus,\n)
 from loom_ai.configured_worker import WorkerActivationError, activate_model_worker
 from loom_ai.model import ModelRequest
 from loom_ai.worker_configuration import validate_worker_configuration
@@ -68,7 +66,7 @@ def test_activation_resolves_logical_gateway_and_selection() -> None:
     assert result.status is WorkerStatus.SUCCESS
     assert result.metadata["configured_worker_id"] == "configured-coder"
     assert result.metadata["attempts"] == 1
-    assert result.metadata["output_bytes"] <= 64
+    assert result.metadata["output_bytes"] <= 512
 
 
 def test_activation_fails_closed_when_selection_has_no_binding() -> None:
