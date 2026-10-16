@@ -104,7 +104,7 @@ workers = payload["output"]
 assert [worker["worker_id"] for worker in workers] == ["repository-task", "verification"], payload
 assert all(worker["status"] == "success" for worker in workers), payload
 evidence_types = [item.get("type") for item in payload["evidence"]]
-assert "execution-phase" in evidence_types, payload
+assert "worker-result" in evidence_types, payload
 json.dump(payload, open(output, "w", encoding="utf-8"))
 print(json.dumps(payload))
 PY
