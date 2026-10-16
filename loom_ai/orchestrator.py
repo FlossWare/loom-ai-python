@@ -7,6 +7,8 @@ one application-facing authority.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
@@ -225,7 +227,17 @@ class Orchestrator:
                 raise ValueError("evaluation intent_id does not match execution Intent")
             if not execution.terminal or execution.result is None:
                 raise ValueError("evaluation requires a terminal execution result")
-            record = evaluation.finalized(
+            result_reference = hashlib.sha256(
+                json.dumps(
+                    execution.result, sort_keys=True, separators=(",", ":")
+                ).encode("utf-8")
+            ).hexdigest()
+            if evaluation.result_reference not in (None, result_reference):
+                raise ValueError("evaluation result_reference does not match current Result")
+            record = replace(
+                evaluation,
+                result_reference=result_reference,
+            ).finalized(
                 execution_id=execution_id,
                 intent_id=execution.intent.intent_id,
             )
