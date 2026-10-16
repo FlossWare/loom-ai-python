@@ -24,7 +24,7 @@ def raw_config(**overrides):
         "limits": {
             "max_attempts": 2,
             "max_duration_seconds": 5,
-            "max_output_bytes": 64,
+            "max_output_bytes": 512,
         },
     }
     value.update(overrides)
@@ -92,9 +92,11 @@ def test_configured_instructions_are_sent_to_provider() -> None:
 
 
 def test_output_limit_is_enforced_in_utf8_bytes() -> None:
+    raw = raw_config()
+    raw["limits"]["max_output_bytes"] = 64
     provider = RecordingProvider(["é" * 40])
     worker = activate_model_worker(
-        validated(),
+        validated(raw),
         model_selections={("local-gateway", "coding"): (provider, "model-a")},
     )
 
@@ -120,24 +122,16 @@ def test_failed_calls_are_retried_only_to_configured_attempt_limit() -> None:
     assert len(provider.requests) == 2
 
 
-def test_duration_budget_rejects_slow_synchronous_provider_result() -> None:
-    class SlowProvider(RecordingProvider):
-        def generate(self, request: ModelRequest) -> ModelResponse:
-            time.sleep(0.02)
-            return super().generate(request)
+def test_duration_budget_rejects_slow_synchronous_provider_result(monkeypatch) -> None:
+    import loom_ai.configured_worker as configured_worker_module
 
-    provider = SlowProvider(["too late"])
+    clock = iter([0.0, 0.0, 2.0])
+    monkeypatch.setattr(configured_worker_module, "monotonic", lambda: next(clock))
+    provider = RecordingProvider(["too late"])
     raw = raw_config()
     raw["limits"]["max_duration_seconds"] = 1
-    config = validated(raw)
-    # Keep the fixture's duration realistic while making the elapsed budget test
-    # deterministic by setting the activated config's immutable limits explicitly.
-    from dataclasses import replace
-    from loom_ai.worker_configuration import WorkerLimits
-
-    config = replace(config, limits=WorkerLimits(2, 0, 64))
     worker = activate_model_worker(
-        config,
+        validated(raw),
         model_selections={("local-gateway", "coding"): (provider, "model-a")},
     )
 
@@ -145,3 +139,4 @@ def test_duration_budget_rejects_slow_synchronous_provider_result() -> None:
 
     assert result.status is WorkerStatus.FAILED
     assert result.error == "configured duration limit exceeded"
+    assert result.metadata["termination_cause"] == "duration_limit"
