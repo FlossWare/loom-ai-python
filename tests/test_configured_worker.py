@@ -40,6 +40,13 @@ def validated(value=None, *, capabilities=None):
         value or raw_config(),
         gateway_selections={"local-gateway": {"coding"}},
         available_capabilities=capabilities or {"repository.read"},
+        policy_registry={
+            "safe": {
+                "approval_required": True,
+                "allowed_capabilities": ["repository.read"],
+                "denied_capabilities": [],
+            }
+        },
     )
 
 
