@@ -73,13 +73,14 @@ def test_model_worker_uses_provider_without_vendor_knowledge() -> None:
     assert result.evidence[0]["metadata"]["implementation"] == "deterministic-fake"
 
 
-def test_model_worker_sends_requirements_and_constraints_to_provider() -> None:
+def test_model_worker_sends_intent_requirements_constraints_and_acceptance() -> None:
     provider = RecordingProvider()
     worker = ModelWorker(provider, model="test-model")
     intent = Intent(
         goal="summarize the result",
         requirements=("be concise", "preserve facts"),
         constraints=("no credentials",),
+        acceptance=("the summary preserves every verified fact", "no unsupported claims"),
     )
 
     worker.execute(WorkerContext(intent=intent))
@@ -89,6 +90,8 @@ def test_model_worker_sends_requirements_and_constraints_to_provider() -> None:
     assert "- be concise" in provider.received.prompt
     assert "- preserve facts" in provider.received.prompt
     assert "- no credentials" in provider.received.prompt
+    assert "- the summary preserves every verified fact" in provider.received.prompt
+    assert "- no unsupported claims" in provider.received.prompt
     assert provider.received.metadata["intent_id"] == intent.intent_id
 
 
