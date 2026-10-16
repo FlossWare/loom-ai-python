@@ -171,16 +171,27 @@ class FileExecutionStateStore:
             "utf-8"
         )
         path = self._path(execution.execution_id)
-        temporary = path.with_suffix(".tmp")
+        temporary_path: Path | None = None
         try:
-            temporary.write_bytes(data)
-            os.replace(temporary, path)
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=self.root,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(data)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            os.replace(temporary_path, path)
         except OSError as exc:
             raise ExecutionStateError(
                 f"could not persist execution {execution.execution_id!r}"
             ) from exc
         finally:
-            temporary.unlink(missing_ok=True)
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def load(self, execution_id: str) -> ExecutionState | None:
         """Load one execution snapshot from durable storage."""
