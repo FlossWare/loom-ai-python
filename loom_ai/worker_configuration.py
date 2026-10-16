@@ -167,10 +167,14 @@ def validate_worker_configuration(
     if not isinstance(configured_approval, bool):
         raise WorkerConfigurationError("policy.approval_required must be a boolean")
     if policy_ref not in policy_registry:
-        raise WorkerConfigurationError(f"unknown or unauthorized policy reference: {policy_ref}")
+        raise WorkerConfigurationError(
+            f"unknown or unauthorized policy reference: {policy_ref}"
+        )
     trusted_policy = policy_registry[policy_ref]
     if not isinstance(trusted_policy, Mapping):
-        raise WorkerConfigurationError(f"registered policy {policy_ref} must be an object")
+        raise WorkerConfigurationError(
+            f"registered policy {policy_ref} must be an object"
+        )
     _keys(
         trusted_policy,
         {"approval_required", "allowed_capabilities", "denied_capabilities"},
