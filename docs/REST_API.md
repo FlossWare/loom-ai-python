@@ -14,13 +14,15 @@ representation change ahead of that decision.
 | Method and path | Purpose | Success response |
 |---|---|---|
 | `GET /health` | Check transport availability | `200 application/json`, `{"status":"ok"}` |
-| `POST /intents` | Execute an Intent | `200 application/json` with Worker Result fields; includes `execution_id` when a durable store is configured |
-| `GET /executions/{execution_id}` | Read durable execution state | `200 application/json` with execution identity, Intent identity, status, state, evidence, metadata, representation version, and provenance |
+| `POST /intents` | Submit and execute an Intent | `200 application/json` with Worker Result fields; includes `execution_id` when a durable store is configured |
+| `GET /executions/{execution_id}` | Read durable execution state | `200 application/json` with execution identity, Intent identity, lifecycle/status, result, evidence, evaluation history, metadata, representation version, and provenance |
 | `POST /executions/{execution_id}/continue` | Continue a durable execution | `200 application/json` with the stable `execution_id` and Worker Result fields |
+| `POST /executions/{execution_id}/cancel` | Request cooperative cancellation | `200 application/json` with execution state and explicit `cancellation_accepted` / `cancellation_pending` flags |
+| `POST /executions/{execution_id}/evaluations` | Append an evaluation of a durable execution result | `200 application/json` with the updated execution representation and evaluation history |
 
-The durable routes require an `ExecutionStateStore`. If no store is configured,
-`POST /intents` executes without returning a durable execution identity and
-the execution lookup/continue routes return `404`.
+The execution lookup, continuation, cancellation, and evaluation routes require an
+`ExecutionStateStore`. Without a store, `POST /intents` executes without
+returning a durable execution identity; the durable routes return `404`.
 
 ## Request representation
 
@@ -28,19 +30,35 @@ the execution lookup/continue routes return `404`.
 
 | Field | Requirement | Meaning |
 |---|---|---|
-| `goal` | Required | Desired outcome |
-| `title` | Optional; defaults to `Intent` | Human-readable task title |
+| `goal` | Required, non-empty string | Desired outcome |
+| `title` | Optional string; defaults to `Intent` | Human-readable task title |
 | `requirements` | Optional array of strings | Requirements |
 | `constraints` | Optional array of strings | Constraints |
 | `acceptance` | Optional array of strings | Acceptance criteria |
-| `intent_id` | Optional | Caller-supplied Intent identity; generated when absent/empty |
-| `execution_id` | Optional | Caller-supplied execution identity; generated when absent/empty |
+| `intent_id` | Optional string | Caller-supplied Intent identity; generated when absent/empty |
+| `execution_id` | Optional string | Caller-supplied execution identity; generated when absent/empty when durable storage is enabled |
+| `deadline` | Optional RFC 3339 timestamp string | Absolute deadline for execution; parsed and enforced by the Orchestrator |
 | `provenance` | Optional object of string keys and string values | Caller-supplied provenance |
 
-The server requires a `Content-Length`, accepts a maximum body size of 10 MiB,
-and rejects a non-object JSON body or non-string provenance values. The current
-implementation does not validate the request's `Content-Type` header and does
-not negotiate the response representation from `Accept`.
+`POST /executions/{execution_id}/cancel` accepts an optional JSON object with
+`reason`, a non-empty string that defaults to `cancellation requested`.
+Cancellation is cooperative: an accepted request can remain pending while active
+work stops. The response distinguishes request acceptance from confirmed
+termination.
+
+`POST /executions/{execution_id}/evaluations` accepts a JSON object containing
+`status` (one of `met`, `partially_met`, `not_met`, `inconclusive`, or
+`not_evaluated`), optional string fields `criteria_version`, `evaluator`,
+`evaluator_version`, and `result_reference`, an optional array of string
+`criteria`, an optional array of object `evidence`, and an optional object
+`provenance`. Evaluations are appended to history; they do not rewrite the
+execution lifecycle or its Result.
+
+The server requires a `Content-Length` for Intent submission, accepts a maximum
+body size of 10 MiB, and rejects a non-object JSON body or non-string provenance
+values. The current implementation does not validate the request's
+`Content-Type` header and does not negotiate the response representation from
+`Accept`.
 
 ## Response representations
 
@@ -55,12 +73,20 @@ Successful execution responses use JSON and include:
 
 When durable state is configured, submission and continuation responses also
 include `execution_id`. Execution lookup returns the durable state representation,
-including the Intent identity and caller provenance.
+including the Intent identity and caller provenance. Lookup also exposes distinct
+lifecycle, legacy-compatible status, structured Result, and evaluation data.
+Legacy `status` describes the prior Worker outcome and is not proof that the task's
+acceptance criteria were met. A completed execution defaults to `not_evaluated`
+until an explicit evaluation is recorded.
+
+Cancellation responses include `cancellation_accepted` and
+`cancellation_pending`; these are separate because a cancellation request can be
+accepted before active work has actually terminated.
 
 All current responses, including errors, use `Content-Type: application/json`.
-Error bodies use the legacy shape `{"error":"..." }` (without the illustrative
-spacing). They are not currently RFC 9457 Problem Details. The API does not
-currently publish a vendor media type or media-type contract version.
+Error bodies use the legacy shape `{"error":"..."}`. They are not currently RFC
+9457 Problem Details. The API does not currently publish a vendor media type or
+media-type contract version.
 
 ## Status and error behavior
 
@@ -69,7 +95,7 @@ currently publish a vendor media type or media-type contract version.
 | Health check | 200 |
 | Intent accepted and executed | 200 |
 | Durable execution found | 200 |
-| Invalid/malformed Intent request, missing Content-Length, invalid provenance | 400 |
+| Invalid/malformed Intent, cancellation, or evaluation request | 400 |
 | Request body larger than 10 MiB | 413 |
 | Unknown route, unknown execution, or durable route used without a store | 404 |
 | Corrupt durable execution state or unexpected server-side failure | 500 |
