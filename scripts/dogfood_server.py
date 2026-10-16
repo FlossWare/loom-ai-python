@@ -158,9 +158,14 @@ class VerificationWorker:
 
 
 def evaluate(
-    result: WorkerResult, _context: WorkerContext
+    result: WorkerResult, context: WorkerContext
 ) -> WorkerEvaluation:
     if result.worker_id == "verification":
+        if result.successful and context.state.get("phase") == "initial":
+            return WorkerEvaluation(
+                ArbiterDecision.INTERRUPT,
+                reason="initial phase verified; execution awaits continuation",
+            )
         if result.successful:
             return WorkerEvaluation(
                 ArbiterDecision.COMPLETE,
