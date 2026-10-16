@@ -61,6 +61,11 @@ class LoomHTTPClient:
         encoded_id = quote(execution_id, safe="")
         return self._request("POST", f"/executions/{encoded_id}/continue", {})
 
+    def cancel(self, execution_id: str, reason: str | None = None) -> dict:
+        encoded_id = quote(execution_id, safe="")
+        payload = {"reason": reason} if reason is not None else {}
+        return self._request("POST", f"/executions/{encoded_id}/cancel", payload)
+
 
 def create_server(client: LoomHTTPClient) -> MCPServer:
     server = MCPServer(
@@ -68,8 +73,10 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
         version="0.1",
         instructions=(
             "Loom is the execution service. Use these tools to submit intents, "
-            "observe durable execution state, and continue existing executions. "
-            "Do not assume this MCP server owns execution state."
+            "observe and continue durable executions, and request cancellation. "
+            "A submission may include an absolute RFC 3339 deadline. Cancellation "
+            "may remain pending until active work stops. This MCP server does not "
+            "own execution state."
         ),
     )
 
@@ -88,6 +95,7 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
         acceptance: list[str] | None = None,
         intent_id: str | None = None,
         execution_id: str | None = None,
+        deadline: str | None = None,
         provenance: dict[str, str] | None = None,
     ) -> dict:
         arguments = {
@@ -98,6 +106,7 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
             **({"acceptance": acceptance} if acceptance is not None else {}),
             **({"intent_id": intent_id} if intent_id is not None else {}),
             **({"execution_id": execution_id} if execution_id is not None else {}),
+            **({"deadline": deadline} if deadline is not None else {}),
             **({"provenance": provenance} if provenance is not None else {}),
         }
         return client.submit(arguments)
@@ -115,6 +124,19 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
     )
     def continue_execution(execution_id: str) -> dict:
         return client.continue_execution(execution_id)
+
+    @server.tool(
+        name="loom_cancel_execution",
+        description=(
+            "Request cooperative cancellation of a durable Loom execution. "
+            "The result distinguishes accepted cancellation from confirmed termination."
+        ),
+    )
+    def cancel_execution(
+        execution_id: str,
+        reason: str | None = None,
+    ) -> dict:
+        return client.cancel(execution_id, reason)
 
     return server
 
