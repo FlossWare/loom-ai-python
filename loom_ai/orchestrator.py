@@ -9,7 +9,6 @@ from __future__ import annotations
 from loom_ai.arbiter import Arbiter
 from loom_ai.execution_state import (
     ExecutionState,
-    ExecutionStateCorruptError,
     ExecutionStateStore,
 )
 from loom_ai.intent import Intent
