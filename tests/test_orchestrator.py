@@ -161,6 +161,14 @@ class RecordingOrchestrator:
             execution_id=execution_id,
             intent=self.intent,
             status="success",
+            result={
+                "worker_id": "service",
+                "status": "success",
+                "output": {"answer": 42},
+                "evidence": [],
+                "error": "",
+                "metadata": {},
+            },
         )
 
     def continue_execution(self, execution_id: str) -> OrchestratorSubmission:
@@ -195,6 +203,7 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         with urlopen(f"{base_url}/executions/exec-1") as response:
             observed = json.load(response)
         assert observed["execution_id"] == "exec-1"
+        assert observed["result"]["output"] == {"answer": 42}
 
         try:
             urlopen(f"{base_url}/executions/missing")
