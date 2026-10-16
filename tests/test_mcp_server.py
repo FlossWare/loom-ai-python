@@ -250,6 +250,7 @@ def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
     assert evaluation["path"] == "/executions/execution%2Fwith%20spaces/evaluations"
     assert evaluation["payload"] == {"status": "met", "criteria": ["complete"]}
 
+
 def test_mcp_can_continue_execution_after_http_server_restart() -> None:
     with TemporaryDirectory() as state_dir:
 
