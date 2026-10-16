@@ -36,7 +36,7 @@ returning a durable execution identity; the durable routes return `404`.
 | `constraints` | Optional array of strings | Constraints |
 | `acceptance` | Optional array of strings | Acceptance criteria |
 | `intent_id` | Optional string | Caller-supplied Intent identity; generated when absent/empty |
-| `execution_id` | Optional string | Caller-supplied execution identity; generated when absent/empty when durable storage is enabled |
+| `execution_id` | Optional string | Caller-supplied execution identity; generated when absent/empty when durable storage is enabled. An existing identity is never overwritten or executed twice; duplicate submission returns `409 Conflict` and the existing execution remains observable. |
 | `deadline` | Optional RFC 3339 timestamp string | Absolute deadline for execution; parsed and enforced by the Orchestrator |
 | `provenance` | Optional object of string keys and string values | Caller-supplied provenance |
 
@@ -98,6 +98,7 @@ media-type contract version.
 | Invalid/malformed Intent, cancellation, or evaluation request | 400 |
 | Request body larger than 10 MiB | 413 |
 | Unknown route, unknown execution, or durable route used without a store | 404 |
+| Intent submission reuses an existing durable execution identity | 409 |
 | Corrupt durable execution state or unexpected server-side failure | 500 |
 
 The current API uses unversioned resource paths (`/intents` and
