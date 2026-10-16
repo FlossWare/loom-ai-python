@@ -459,6 +459,7 @@ def test_http_duplicate_execution_id_returns_conflict_without_rerunning(
         assert captured.value.code == 409
         conflict = json.load(captured.value)
         assert conflict["execution_id"] == "http-stable-execution"
+        assert conflict["category"] == "execution.identity_conflict"
         assert "execution already exists" in conflict["error"]
         assert len(worker.contexts) == 1
     finally:
