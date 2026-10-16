@@ -14,10 +14,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
+from loom_ai.evaluation import EvaluationRecord
 from loom_ai.intent import Intent
 
-EXECUTION_STATE_VERSION = 1
+EXECUTION_STATE_VERSION = 2
+_SUPPORTED_STATE_VERSIONS = frozenset({1, EXECUTION_STATE_VERSION})
 _TERMINAL_STATUSES = frozenset({"success", "failed", "cancelled"})
+_LIFECYCLE_STATES = frozenset({"running", "interrupted", "completed"})
+_LEGACY_LIFECYCLE = {
+    "running": "running",
+    "interrupted": "interrupted",
+    "success": "completed",
+    "failed": "completed",
+    "cancelled": "completed",
+}
 
 
 class ExecutionStateError(ValueError):
@@ -40,22 +50,59 @@ class ExecutionState:
     metadata: Mapping[str, Any] = field(default_factory=dict)
     representation_version: int = EXECUTION_STATE_VERSION
     result: Mapping[str, Any] | None = None
+    lifecycle: str | None = None
+    evaluations: tuple[EvaluationRecord, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.execution_id.strip():
             raise ExecutionStateError("execution_id must not be empty")
         if self.status not in {"running", "interrupted", *_TERMINAL_STATUSES}:
             raise ExecutionStateError(f"unsupported execution status: {self.status!r}")
-        if self.representation_version != EXECUTION_STATE_VERSION:
+        if self.representation_version not in _SUPPORTED_STATE_VERSIONS:
             raise ExecutionStateError(
                 f"unsupported execution-state version: {self.representation_version}"
             )
+        if self.lifecycle is None:
+            object.__setattr__(self, "lifecycle", _LEGACY_LIFECYCLE[self.status])
+        elif self.lifecycle not in _LIFECYCLE_STATES:
+            raise ExecutionStateError(
+                f"unsupported execution lifecycle: {self.lifecycle!r}"
+            )
+        if not all(isinstance(item, EvaluationRecord) for item in self.evaluations):
+            raise ExecutionStateError(
+                "evaluations must contain EvaluationRecord values"
+            )
+
+    @property
+    def evaluation(self) -> EvaluationRecord:
+        """Evaluation for the current result, or not-evaluated if none applies."""
+        reference = execution_result_reference(self)
+        if reference is None:
+            return EvaluationRecord()
+        if not self.evaluations:
+            return EvaluationRecord(result_reference=reference)
+        latest = self.evaluations[-1]
+        if latest.result_reference is not None and latest.result_reference != reference:
+            return EvaluationRecord(result_reference=reference)
+        return latest
 
     @property
     def terminal(self) -> bool:
-        """Whether the snapshot represents a terminal execution outcome."""
+        """Whether the snapshot represents a terminal execution lifecycle."""
+        return self.lifecycle == "completed"
 
-        return self.status in _TERMINAL_STATUSES
+
+def execution_result_reference(execution: ExecutionState) -> str | None:
+    """Return a stable reference to this execution phase's structured Result."""
+    if execution.result is None:
+        return None
+    payload = {
+        "execution_id": execution.execution_id,
+        "phase": execution.metadata.get("phase"),
+        "result": execution.result,
+    }
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
 
 
 class ExecutionStateStore(Protocol):
@@ -130,7 +177,7 @@ class FileExecutionStateStore:
 
 def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
     return {
-        "representation_version": execution.representation_version,
+        "representation_version": EXECUTION_STATE_VERSION,
         "execution_id": execution.execution_id,
         "intent": {
             "title": execution.intent.title,
@@ -144,6 +191,8 @@ def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
         "state": dict(execution.state),
         "evidence": [dict(item) for item in execution.evidence],
         "status": execution.status,
+        "lifecycle": execution.lifecycle,
+        "evaluations": [item.to_dict() for item in execution.evaluations],
         "metadata": dict(execution.metadata),
         "result": dict(execution.result) if execution.result is not None else None,
     }
@@ -152,7 +201,8 @@ def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
 def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
     if not isinstance(payload, dict):
         raise TypeError("execution state must be a JSON object")
-    if payload.get("representation_version") != EXECUTION_STATE_VERSION:
+    version = payload.get("representation_version")
+    if version not in _SUPPORTED_STATE_VERSIONS:
         raise ValueError("unsupported execution-state representation version")
     if payload.get("execution_id") != expected_id:
         raise ValueError("execution identity does not match requested execution")
@@ -169,6 +219,11 @@ def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
     result = payload.get("result")
     if result is not None and not isinstance(result, dict):
         raise TypeError("result must be a JSON object or null")
+    evaluations = payload.get("evaluations", [])
+    if not isinstance(evaluations, list) or not all(
+        isinstance(item, dict) for item in evaluations
+    ):
+        raise TypeError("evaluations must be a list of JSON objects")
 
     return ExecutionState(
         execution_id=expected_id,
@@ -186,5 +241,7 @@ def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
         status=payload["status"],
         metadata=dict(payload.get("metadata", {})),
         result=dict(result) if result is not None else None,
-        representation_version=payload["representation_version"],
+        lifecycle=payload.get("lifecycle"),
+        evaluations=tuple(EvaluationRecord.from_dict(item) for item in evaluations),
+        representation_version=EXECUTION_STATE_VERSION,
     )

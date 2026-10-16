@@ -50,6 +50,13 @@ class FakeClient:
             "reason": reason,
         }
 
+    def record_evaluation(self, execution_id, **arguments):
+        return {
+            "execution_id": execution_id,
+            "status": arguments["status"],
+            "evaluation": {"status": arguments["status"]},
+        }
+
 
 def test_mcp_client_discovers_generic_loom_tools() -> None:
     async def run() -> None:
@@ -60,6 +67,7 @@ def test_mcp_client_discovers_generic_loom_tools() -> None:
                 "loom_get_execution",
                 "loom_continue_execution",
                 "loom_cancel_execution",
+                "loom_record_evaluation",
             ]
             assert client.server_info.name == "loom"
 
@@ -79,6 +87,7 @@ def test_mcp_stdio_protocol_with_external_process() -> None:
                 "loom_get_execution",
                 "loom_continue_execution",
                 "loom_cancel_execution",
+                "loom_record_evaluation",
             ]
 
     asyncio.run(run())
@@ -111,7 +120,7 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
             )
             async with Client(mcp_process) as client:
                 tools = await client.list_tools()
-                assert len(tools.tools) == 4
+                assert len(tools.tools) == 5
 
                 submitted = await client.call_tool(
                     "loom_submit_intent",
@@ -136,6 +145,19 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 continued_payload = json.loads(continued.content[0].text)
                 assert continued_payload["execution_id"] == execution_id
                 assert continued_payload["status"] == "success"
+
+                evaluated = await client.call_tool(
+                    "loom_record_evaluation",
+                    {
+                        "execution_id": execution_id,
+                        "status": "met",
+                        "criteria": ["task completed"],
+                        "evaluator": "mcp-integration-test",
+                    },
+                )
+                evaluated_payload = json.loads(evaluated.content[0].text)
+                assert evaluated_payload["lifecycle"] == "completed"
+                assert evaluated_payload["evaluation"]["status"] == "met"
 
                 cancelled = await client.call_tool(
                     "loom_cancel_execution",
@@ -186,6 +208,13 @@ def test_mcp_client_invokes_all_loom_tools() -> None:
             assert cancelled_payload["status"] == "cancellation_requested"
             assert cancelled_payload["reason"] == "test cancellation"
 
+            evaluated = await client.call_tool(
+                "loom_record_evaluation",
+                {"execution_id": "exec-1", "status": "met"},
+            )
+            evaluated_payload = json.loads(evaluated.content[0].text)
+            assert evaluated_payload["evaluation"]["status"] == "met"
+
     asyncio.run(run())
 
 
@@ -196,6 +225,7 @@ def test_http_client_maps_only_public_loom_endpoints() -> None:
     assert callable(client.observe)
     assert callable(client.continue_execution)
     assert callable(client.cancel)
+    assert callable(client.record_evaluation)
 
 
 def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
@@ -207,8 +237,15 @@ def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
     observed = client.observe("execution/with spaces")
     continued = client.continue_execution("execution/with spaces")
     cancelled = client.cancel("execution/with spaces", "stop now")
+    evaluation = client.record_evaluation(
+        "execution/with spaces",
+        status="met",
+        criteria=["complete"],
+    )
 
     assert observed["path"] == "/executions/execution%2Fwith%20spaces"
     assert continued["path"] == "/executions/execution%2Fwith%20spaces/continue"
     assert cancelled["path"] == "/executions/execution%2Fwith%20spaces/cancel"
     assert cancelled["payload"] == {"reason": "stop now"}
+    assert evaluation["path"] == "/executions/execution%2Fwith%20spaces/evaluations"
+    assert evaluation["payload"] == {"status": "met", "criteria": ["complete"]}

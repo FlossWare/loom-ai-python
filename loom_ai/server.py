@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.evaluation import EvaluationRecord, EvaluationStatus
 from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateError,
@@ -157,6 +158,92 @@ class LoomServer:
 
             def do_POST(self) -> None:  # noqa: N802
                 request_path = urlsplit(self.path).path
+                if request_path.startswith("/executions/") and request_path.endswith(
+                    "/evaluations"
+                ):
+                    execution_id = (
+                        request_path.removeprefix("/executions/")
+                        .removesuffix("/evaluations")
+                        .strip("/")
+                    )
+                    execution_id = unquote(execution_id)
+                    if not execution_id or not owner.orchestrator.durable_enabled:
+                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                        return
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                        if length < 0:
+                            raise ValueError("Content-Length must be non-negative")
+                        if length > MAX_PAYLOAD_BYTES:
+                            self._send(
+                                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                                {"error": "payload too large"},
+                            )
+                            return
+                        raw_body = self.rfile.read(length).decode("utf-8")
+                        payload = json.loads(raw_body) if raw_body else {}
+                        if not isinstance(payload, dict):
+                            raise TypeError("request body must be a JSON object")
+                        status = EvaluationStatus(
+                            payload.get("status", "not_evaluated")
+                        )
+                        criteria = payload.get("criteria", [])
+                        evidence = payload.get("evidence", [])
+                        provenance = payload.get("provenance", {})
+                        if not isinstance(criteria, list) or not all(
+                            isinstance(item, str) for item in criteria
+                        ):
+                            raise TypeError("criteria must be an array of strings")
+                        if not isinstance(evidence, list) or not all(
+                            isinstance(item, dict) for item in evidence
+                        ):
+                            raise TypeError("evidence must be an array of objects")
+                        if not isinstance(provenance, dict):
+                            raise TypeError("provenance must be an object")
+                        optional_strings = (
+                            "criteria_version",
+                            "evaluator",
+                            "evaluator_version",
+                            "result_reference",
+                        )
+                        for field_name in optional_strings:
+                            if payload.get(field_name) is not None and not isinstance(
+                                payload[field_name], str
+                            ):
+                                raise TypeError(f"{field_name} must be a string")
+                        evaluation = EvaluationRecord(
+                            status=status,
+                            criteria=tuple(criteria),
+                            criteria_version=payload.get("criteria_version"),
+                            evaluator=payload.get("evaluator"),
+                            evaluator_version=payload.get("evaluator_version"),
+                            result_reference=payload.get("result_reference"),
+                            evidence=tuple(evidence),
+                            provenance=provenance,
+                        )
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                        return
+                    try:
+                        execution = owner.orchestrator.record_evaluation(
+                            execution_id, evaluation
+                        )
+                    except KeyError:
+                        self._send(
+                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                        )
+                        return
+                    except (TypeError, ValueError) as exc:
+                        self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                        return
+                    except ExecutionStateError as exc:
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
+                        return
+                    self._send(HTTPStatus.OK, _execution_payload(execution))
+                    return
+
                 if request_path.startswith("/executions/") and request_path.endswith(
                     "/cancel"
                 ):
@@ -359,6 +446,9 @@ def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
         "execution_id": execution.execution_id,
         "intent_id": execution.intent.intent_id,
         "status": execution.status,
+        "lifecycle": execution.lifecycle,
+        "evaluation": execution.evaluation.to_dict(),
+        "evaluations": [item.to_dict() for item in execution.evaluations],
         "state": execution.state,
         "evidence": execution.evidence,
         "metadata": execution.metadata,
@@ -369,13 +459,20 @@ def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
 
 
 def _result_payload(result: WorkerResult) -> dict[str, Any]:
-    return {
+    structured_result = {
         "worker_id": result.worker_id,
         "status": result.status.value,
         "output": result.output,
         "evidence": result.evidence,
         "error": result.error,
         "metadata": result.metadata,
+    }
+    return {
+        **structured_result,
+        "status": result.status.value,
+        "lifecycle": "completed",
+        "evaluation": EvaluationRecord().to_dict(),
+        "result": structured_result,
     }
 
 

@@ -84,6 +84,17 @@ is still pending.
 - loom_get_execution -> GET /executions/{execution_id}
 - loom_continue_execution -> POST /executions/{execution_id}/continue
 - loom_cancel_execution -> POST /executions/{execution_id}/cancel
+- loom_record_evaluation -> POST /executions/{execution_id}/evaluations
+
+Durable observation returns separate `lifecycle`, legacy-compatible `status`,
+structured `result`, and `evaluation` / `evaluations` fields. `status` is
+retained for existing clients and describes the prior Worker outcome; it must not
+be used alone as proof that task acceptance criteria were met. The lifecycle
+indicates whether the execution is running, interrupted, or terminal. Evaluation
+status is one of `met`, `partially_met`, `not_met`, `inconclusive`, or
+`not_evaluated`. A completed execution defaults to `not_evaluated` until an
+explicit assessment is recorded. New assessments are appended and do not rewrite
+the execution lifecycle or Result.
 
 The MCP server does not import Loom execution classes, own execution state, replay
 client transcripts, or execute repository work. Loom remains responsible for Intent
