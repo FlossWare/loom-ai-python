@@ -138,7 +138,7 @@ def test_build_crushrc_configures_provider_model_and_generic_mcp() -> None:
     )
 
     assert (
-        'provider add flossware --type openai-compat --base-url '
+        "provider add flossware --type openai-compat --base-url "
         '"http://127.0.0.1:8765/v1"'
     ) in config
     assert (
