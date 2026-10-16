@@ -8,7 +8,7 @@ from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import Orchestrator
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
 
 
 class PhaseWorker:
@@ -46,7 +46,7 @@ def complete(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
     return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
 
-def make_orchestrator(state_dir: Path, worker: object) -> Orchestrator:
+def make_orchestrator(state_dir: Path, worker: Worker) -> Orchestrator:
     return Orchestrator(
         Arbiter([worker], complete, max_retries=0),
         execution_store=FileExecutionStateStore(state_dir),
