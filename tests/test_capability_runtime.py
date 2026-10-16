@@ -134,9 +134,9 @@ def test_approved_capability_invocation_calls_binding() -> None:
         "repository.read",
         {"path": "README.md"},
         bindings={"repository.read": lambda args: "contents:" + args["path"]},
-        approval_authorizer=lambda _config, capability, _args: approved.append(
-            capability
-        ) or True,
+        approval_authorizer=lambda _config, capability, _args: (
+            approved.append(capability) or True
+        ),
     )
 
     assert result == "contents:README.md"
