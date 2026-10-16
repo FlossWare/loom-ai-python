@@ -116,7 +116,9 @@ def verify_repository(repo: Path) -> WorkerResult:
     diff = run(["git", "diff", "--name-only"], cwd=repo)
     diff_check = run(["git", "diff", "--check"], cwd=repo)
     changed = [line for line in diff.stdout.splitlines() if line]
-    working_tree = status.stdout.splitlines()
+    working_tree = [
+        line for line in status.stdout.splitlines() if line and line != "?? .crushrc"
+    ]
 
     if status.returncode != 0 or diff.returncode != 0 or diff_check.returncode != 0:
         return result_failure("real-repo-verify", "git verification command failed")
