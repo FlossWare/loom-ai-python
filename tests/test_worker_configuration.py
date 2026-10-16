@@ -186,7 +186,9 @@ def test_unknown_policy_reference_is_rejected() -> None:
     value = config()
     value["policy"]["policy_ref"] = "unregistered"
 
-    with pytest.raises(WorkerConfigurationError, match="unknown or unauthorized policy"):
+    with pytest.raises(
+        WorkerConfigurationError, match="unknown or unauthorized policy"
+    ):
         validate(value)
 
 
