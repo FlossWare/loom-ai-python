@@ -27,6 +27,7 @@ from loom_ai.execution_state import (
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
     ExecutionAlreadyExistsError,
+    ExecutionNotResumableError,
     Orchestrator,
     parse_deadline,
 )
@@ -313,6 +314,12 @@ class LoomServer:
                         return
                     try:
                         submission = owner.orchestrator.continue_execution(execution_id)
+                    except ExecutionNotResumableError as exc:
+                        self._send(
+                            HTTPStatus.CONFLICT,
+                            {"error": str(exc), "execution_id": execution_id},
+                        )
+                        return
                     except KeyError as exc:
                         self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
                         return
