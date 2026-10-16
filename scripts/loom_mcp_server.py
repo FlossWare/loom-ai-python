@@ -66,11 +66,6 @@ class LoomHTTPClient:
         payload = {"reason": reason} if reason is not None else {}
         return self._request("POST", f"/executions/{encoded_id}/cancel", payload)
 
-    def cancel(self, execution_id: str, reason: str | None = None) -> dict:
-        encoded_id = quote(execution_id, safe="")
-        payload = {"reason": reason} if reason is not None else {}
-        return self._request("POST", f"/executions/{encoded_id}/cancel", payload)
-
 
 def create_server(client: LoomHTTPClient) -> MCPServer:
     server = MCPServer(
