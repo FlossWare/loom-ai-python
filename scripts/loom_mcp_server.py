@@ -8,11 +8,11 @@ workers, verification, and provenance in Loom.
 
 from __future__ import annotations
 
+import json
 import os
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
-import json
 
 from mcp.server import MCPServer
 
@@ -48,9 +48,7 @@ class LoomHTTPClient:
             detail = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"Loom HTTP {exc.code}: {detail}") from exc
         except URLError as exc:
-            raise RuntimeError(
-                f"Loom HTTP connection failed: {exc.reason}"
-            ) from exc
+            raise RuntimeError(f"Loom HTTP connection failed: {exc.reason}") from exc
 
     def submit(self, arguments: dict) -> dict:
         return self._request("POST", "/intents", arguments)
@@ -61,9 +59,7 @@ class LoomHTTPClient:
 
     def continue_execution(self, execution_id: str) -> dict:
         encoded_id = quote(execution_id, safe="")
-        return self._request(
-            "POST", f"/executions/{encoded_id}/continue", {}
-        )
+        return self._request("POST", f"/executions/{encoded_id}/continue", {})
 
 
 def create_server(client: LoomHTTPClient) -> MCPServer:
