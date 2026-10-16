@@ -84,12 +84,19 @@ def verify_repository(repo: Path) -> WorkerResult:
         return result_failure("real-repo-verify", f"missing {TARGET_FILE}")
 
     text = file_path.read_text(encoding="utf-8")
+    status = run(["git", "status", "--porcelain"], cwd=repo)
     diff = run(["git", "diff", "--name-only"], cwd=repo)
     diff_check = run(["git", "diff", "--check"], cwd=repo)
     changed = [line for line in diff.stdout.splitlines() if line]
+    working_tree = status.stdout.splitlines()
 
-    if diff.returncode != 0 or diff_check.returncode != 0:
+    if status.returncode != 0 or diff.returncode != 0 or diff_check.returncode != 0:
         return result_failure("real-repo-verify", "git verification command failed")
+    if working_tree != [f" M {TARGET_FILE}"]:
+        return result_failure(
+            "real-repo-verify",
+            f"unexpected changed files or working-tree state: {working_tree!r}",
+        )
     if changed != [TARGET_FILE]:
         return result_failure(
             "real-repo-verify", f"unexpected changed files: {changed!r}"
