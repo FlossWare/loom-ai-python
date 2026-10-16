@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from loom_ai import (
+    CancellationToken,
     FakeModelProvider,
     Intent,
     ModelResponse,
@@ -177,3 +178,34 @@ def test_retry_provider_timeout_uses_remaining_budget(monkeypatch) -> None:
 
     assert result.status is WorkerStatus.SUCCESS
     assert [request.timeout_seconds for request in provider.requests] == [5.0, 2.0]
+
+
+
+def test_cancellation_during_provider_call_overrides_success() -> None:
+    token = CancellationToken()
+
+    class CancellingProvider(RecordingProvider):
+        def generate(self, request: ModelRequest) -> ModelResponse:
+            token.cancel("cancelled during model call")
+            return super().generate(request)
+
+    provider = CancellingProvider(["apparently successful response"])
+    worker = activate_model_worker(
+        validated(),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+    )
+
+    result = worker.execute(
+        WorkerContext(
+            intent=Intent(goal="honor cancellation"),
+            cancellation_token=token,
+        )
+    )
+
+    assert result.status is WorkerStatus.CANCELLED
+    assert result.metadata["termination_cause"] == "cancelled"
+    assert any(
+        item.get("type") == "configured-worker-termination"
+        and item.get("cause") == "cancelled"
+        for item in result.evidence
+    )
