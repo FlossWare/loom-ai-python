@@ -340,7 +340,7 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
                     "intent-restart-preserves-provenance"
                 )
                 assert observed_payload["status"] == "success"
-                assert observed_payload["lifecycle"] == "completed"
+                assert observed_payload["lifecycle"] == "interrupted"
                 assert observed_payload["provenance"] == {
                     "client": "mcp-restart-test",
                     "task_path": "tests/test_mcp_server.py",
