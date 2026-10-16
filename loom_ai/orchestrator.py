@@ -112,9 +112,27 @@ class Orchestrator:
 
         if self.execution_store is None:
             token = CancellationToken()
-            return OrchestratorSubmission(
-                None, self._execute_with_controls(intent, absolute_deadline, token)
-            )
+            result = self._execute_with_controls(intent, absolute_deadline, token)
+            if result.metadata.get("continuation_pending") is True:
+                result = WorkerResult(
+                    worker_id=result.worker_id,
+                    status=WorkerStatus.FAILED,
+                    output=result.output,
+                    evidence=result.evidence
+                    + (
+                        {
+                            "type": "interruption-unavailable",
+                            "reason": "durable execution state is not configured",
+                        },
+                    ),
+                    error="execution interrupted but durable state is not configured",
+                    metadata={
+                        **result.metadata,
+                        "continuation_pending": False,
+                        "termination_cause": "durable_state_unavailable",
+                    },
+                )
+            return OrchestratorSubmission(None, result)
 
         actual_id = execution_id or str(uuid4())
         token = CancellationToken()
