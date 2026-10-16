@@ -38,8 +38,8 @@ class ExecutionState:
     evidence: tuple[Mapping[str, Any], ...] = ()
     status: str = "interrupted"
     metadata: Mapping[str, Any] = field(default_factory=dict)
-    result: Mapping[str, Any] | None = None
     representation_version: int = EXECUTION_STATE_VERSION
+    result: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.execution_id.strip():
