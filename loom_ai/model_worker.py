@@ -15,9 +15,11 @@ class ModelWorker:
         *,
         model: str = "default",
         worker_id: str = "model",
+        timeout_seconds: float | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
+        self.timeout_seconds = timeout_seconds
         self._worker_id = worker_id
 
     @property
@@ -46,6 +48,7 @@ class ModelWorker:
                     prompt=prompt,
                     model=self.model,
                     metadata={"intent_id": intent.intent_id},
+                    timeout_seconds=self.timeout_seconds,
                 )
             )
             if (

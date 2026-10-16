@@ -39,6 +39,7 @@ class ConfiguredModelWorker:
             provider,
             model=model,
             worker_id=configuration.worker_id,
+            timeout_seconds=float(configuration.limits.max_duration_seconds),
         )
 
     @property

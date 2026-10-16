@@ -93,6 +93,7 @@ def test_configured_instructions_are_sent_to_provider() -> None:
     assert "Perform bounded implementation work" in provider.requests[0].prompt
     assert "Prefer minimal, tested changes" in provider.requests[0].prompt
     assert "write a test" in provider.requests[0].prompt
+    assert provider.requests[0].timeout_seconds == 5.0
 
 
 def test_output_limit_is_enforced_in_utf8_bytes() -> None:
@@ -146,3 +147,9 @@ def test_duration_budget_rejects_slow_synchronous_provider_result(monkeypatch) -
     assert result.status is WorkerStatus.FAILED
     assert result.error == "configured duration limit exceeded"
     assert result.metadata["termination_cause"] == "duration_limit"
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True])
+def test_model_request_rejects_invalid_timeout(timeout) -> None:
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        ModelRequest(prompt="test", timeout_seconds=timeout)
