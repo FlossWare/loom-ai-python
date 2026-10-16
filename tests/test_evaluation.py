@@ -145,7 +145,9 @@ def test_continuation_invalidates_current_evaluation_but_keeps_history(
 
 def test_evaluation_rejects_a_reference_to_another_result(tmp_path) -> None:
     orchestrator = build_orchestrator(tmp_path)
-    orchestrator.submit(Intent(goal="result identity check"), execution_id="result-bound")
+    orchestrator.submit(
+        Intent(goal="result identity check"), execution_id="result-bound"
+    )
 
     with pytest.raises(ValueError, match="result_reference"):
         orchestrator.record_evaluation(
@@ -184,7 +186,9 @@ def test_v1_snapshot_migrates_to_separate_lifecycle_and_evaluation(tmp_path) -> 
     assert json.loads(path.read_text(encoding="utf-8"))["representation_version"] == 2
 
 
-def test_http_exposes_and_records_evaluation_without_changing_lifecycle(tmp_path) -> None:
+def test_http_exposes_and_records_evaluation_without_changing_lifecycle(
+    tmp_path,
+) -> None:
     server = LoomServer(orchestrator=build_orchestrator(tmp_path), port=0)
     instance = server.start()
     thread = Thread(target=instance.serve_forever, daemon=True)
