@@ -66,6 +66,34 @@ class LoomHTTPClient:
         payload = {"reason": reason} if reason is not None else {}
         return self._request("POST", f"/executions/{encoded_id}/cancel", payload)
 
+    def record_evaluation(
+        self,
+        execution_id: str,
+        *,
+        status: str,
+        criteria: list[str] | None = None,
+        criteria_version: str | None = None,
+        evaluator: str | None = None,
+        evaluator_version: str | None = None,
+        evidence: list[dict] | None = None,
+        provenance: dict | None = None,
+    ) -> dict:
+        encoded_id = quote(execution_id, safe="")
+        payload = {"status": status}
+        for key, value in {
+            "criteria": criteria,
+            "criteria_version": criteria_version,
+            "evaluator": evaluator,
+            "evaluator_version": evaluator_version,
+            "evidence": evidence,
+            "provenance": provenance,
+        }.items():
+            if value is not None:
+                payload[key] = value
+        return self._request(
+            "POST", f"/executions/{encoded_id}/evaluations", payload
+        )
+
 
 def create_server(client: LoomHTTPClient) -> MCPServer:
     server = MCPServer(
@@ -137,6 +165,34 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
         reason: str | None = None,
     ) -> dict:
         return client.cancel(execution_id, reason)
+
+    @server.tool(
+        name="loom_record_evaluation",
+        description=(
+            "Append an attributable task evaluation to a completed Loom execution. "
+            "Evaluation status is separate from execution lifecycle and Result outcome."
+        ),
+    )
+    def record_evaluation(
+        execution_id: str,
+        status: str,
+        criteria: list[str] | None = None,
+        criteria_version: str | None = None,
+        evaluator: str | None = None,
+        evaluator_version: str | None = None,
+        evidence: list[dict] | None = None,
+        provenance: dict | None = None,
+    ) -> dict:
+        return client.record_evaluation(
+            execution_id,
+            status=status,
+            criteria=criteria,
+            criteria_version=criteria_version,
+            evaluator=evaluator,
+            evaluator_version=evaluator_version,
+            evidence=evidence,
+            provenance=provenance,
+        )
 
     return server
 
