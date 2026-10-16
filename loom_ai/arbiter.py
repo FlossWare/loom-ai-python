@@ -1,4 +1,4 @@
-""""Composite Worker implementation for Loom orchestration."""
+"""Composite Worker implementation for Loom orchestration."""
 
 from __future__ import annotations
 
