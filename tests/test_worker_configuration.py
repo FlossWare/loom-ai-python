@@ -32,7 +32,9 @@ def config() -> dict:
             "policy_ref": "bounded-coding",
             "approval_required": True,
             "allowed_capabilities": [
-                "repository.read", "verification.run", "optional.search"
+                "repository.read",
+                "verification.run",
+                "optional.search",
             ],
             "denied_capabilities": ["credential.read"],
         },
@@ -79,7 +81,10 @@ def test_valid_config_becomes_immutable_effective_contract() -> None:
             ),
             "unknown fields",
         ),
-        (lambda value: value["limits"].update(max_output_bytes=True), "positive integer"),
+        (
+            lambda value: value["limits"].update(max_output_bytes=True),
+            "positive integer",
+        ),
         (lambda value: value["instructions"].clear(), "at least 1"),
         (
             lambda value: value["policy"].update(
@@ -120,8 +125,11 @@ def test_unknown_gateway_and_selection_are_rejected() -> None:
 def test_required_unavailable_capability_prevents_activation() -> None:
     value = config()
     value["tools"] = [{"capability_ref": "shell.execute", "required": True}]
+    value["policy"]["allowed_capabilities"].append("shell.execute")
 
-    with pytest.raises(WorkerConfigurationError, match="required capabilities are unavailable"):
+    with pytest.raises(
+        WorkerConfigurationError, match="required capabilities are unavailable"
+    ):
         validate(value)
 
 
