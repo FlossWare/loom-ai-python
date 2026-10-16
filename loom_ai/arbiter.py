@@ -13,6 +13,7 @@ class ArbiterDecision(str, Enum):
     """Decision applied after evaluating a Worker result."""
 
     COMPLETE = "complete"
+    INTERRUPT = "interrupt"
     CONTINUE = "continue"
     RETRY = "retry"
     REPLAN = "replan"
@@ -120,6 +121,11 @@ class Arbiter:
             if evaluation.decision is ArbiterDecision.COMPLETE:
                 return self._result(outputs, evidence, "complete", evaluation.reason)
 
+            if evaluation.decision is ArbiterDecision.INTERRUPT:
+                return self._result(
+                    outputs, evidence, "interrupted", evaluation.reason
+                )
+
             if evaluation.decision is ArbiterDecision.RETRY:
                 # max_retries counts retries after the initial attempt. Once
                 # this attempt reaches that limit, do not execute the worker
@@ -156,6 +162,7 @@ class Arbiter:
     ) -> WorkerResult:
         result_status = {
             "complete": WorkerStatus.SUCCESS,
+            "interrupted": WorkerStatus.SUCCESS,
             "failed": WorkerStatus.FAILED,
             "cancelled": WorkerStatus.CANCELLED,
         }[status]
@@ -169,6 +176,7 @@ class Arbiter:
                 "arbiter_id": self.worker_id,
                 "workers": [result.worker_id for result in outputs],
                 "reason": reason,
+                **({"continuation_pending": True} if status == "interrupted" else {}),
                 **(
                     {"termination_cause": termination_cause}
                     if termination_cause is not None
