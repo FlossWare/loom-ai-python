@@ -260,7 +260,8 @@ class LoomServer:
                         )
                     except KeyError:
                         self._send(
-                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("execution.not_found", "execution not found"),
                         )
                         return
                     except (TypeError, ValueError) as exc:
@@ -287,8 +288,20 @@ class LoomServer:
                         .strip("/")
                     )
                     execution_id = unquote(execution_id)
-                    if not execution_id or not owner.orchestrator.durable_enabled:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    if not execution_id:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("route.not_found", "not found"),
+                        )
+                        return
+                    if not owner.orchestrator.durable_enabled:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.durability_unavailable",
+                                "durable execution state is not configured",
+                            ),
+                        )
                         return
                     try:
                         length = int(self.headers.get("Content-Length", "0"))
@@ -297,7 +310,9 @@ class LoomServer:
                         if length > MAX_PAYLOAD_BYTES:
                             self._send(
                                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                                {"error": "payload too large"},
+                                _error_payload(
+                                    "request.payload_too_large", "payload too large"
+                                ),
                             )
                             return
                         raw_body = self.rfile.read(length).decode("utf-8")
@@ -309,9 +324,9 @@ class LoomServer:
                             raise ValueError("reason must be a non-empty string")
                     except (TypeError, ValueError, json.JSONDecodeError) as exc:
                         self._send(
-                        HTTPStatus.BAD_REQUEST,
-                        _error_payload("request.invalid", str(exc)),
-                    )
+                            HTTPStatus.BAD_REQUEST,
+                            _error_payload("request.invalid", str(exc)),
+                        )
                         return
                     try:
                         cancellation = owner.orchestrator.cancel(
@@ -326,7 +341,8 @@ class LoomServer:
                         return
                     except ExecutionStateError as exc:
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("execution.state_error", str(exc)),
                         )
                         return
                     response = _execution_payload(cancellation.execution)
@@ -345,7 +361,10 @@ class LoomServer:
                     )
                     execution_id = unquote(execution_id)
                     if not execution_id or not owner.orchestrator.durable_enabled:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                        self._send(
+                        HTTPStatus.NOT_FOUND,
+                        _error_payload("route.not_found", "not found"),
+                    )
                         return
                     try:
                         submission = owner.orchestrator.continue_execution(execution_id)
@@ -360,16 +379,21 @@ class LoomServer:
                         )
                         return
                     except KeyError as exc:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("execution.not_found", str(exc)),
+                        )
                         return
                     except ExecutionStateError as exc:
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("execution.state_error", str(exc)),
                         )
                         return
                     except Exception as exc:  # pragma: no cover
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("server.internal_error", str(exc)),
                         )
                         return
                     self._send(
@@ -395,7 +419,9 @@ class LoomServer:
                     if length > MAX_PAYLOAD_BYTES:
                         self._send(
                             HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                            {"error": "payload too large"},
+                            _error_payload(
+                                "request.payload_too_large", "payload too large"
+                            ),
                         )
                         return
 
@@ -407,7 +433,10 @@ class LoomServer:
                     ):
                         requested_execution_id = str(uuid4())
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                    self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error_payload("request.invalid", str(exc)),
+                    )
                     return
 
                 try:
