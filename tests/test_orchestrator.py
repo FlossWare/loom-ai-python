@@ -42,9 +42,7 @@ class RaisingWorker:
         raise ValueError("private implementation detail")
 
 
-def complete(
-    result: WorkerResult, _context: WorkerContext
-) -> WorkerEvaluation:
+def complete(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
     return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
 
