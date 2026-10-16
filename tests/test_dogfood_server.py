@@ -9,6 +9,7 @@ from loom_ai import (
     WorkerContext,
     WorkerStatus,
 )
+from loom_ai.orchestrator import Orchestrator
 from scripts.dogfood_server import (
     FOLLOWUP_MARKER,
     INITIAL_MARKER,
@@ -30,8 +31,10 @@ def test_dogfood_profile_uses_durable_store_and_real_arbiter(
     server = build_server(host="127.0.0.1", port=0)
 
     assert isinstance(server, LoomServer)
-    assert isinstance(server.execution_store, FileExecutionStateStore)
-    assert [worker.worker_id for worker in server.arbiter.workers] == [
+    assert isinstance(server.orchestrator, Orchestrator)
+    assert server.orchestrator.durable
+    assert isinstance(server.orchestrator._execution_store, FileExecutionStateStore)
+    assert [worker.worker_id for worker in server.orchestrator._arbiter.workers] == [
         "repository-task",
         "verification",
     ]
