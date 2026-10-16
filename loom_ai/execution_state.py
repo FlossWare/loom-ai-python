@@ -79,7 +79,7 @@ class ExecutionState:
     @property
     def terminal(self) -> bool:
         """Whether the snapshot represents a terminal execution lifecycle."""
-        return self.lifecycle in {"completed", "failed", "cancelled"}
+        return self.lifecycle == "completed"
 
 
 class ExecutionStateStore(Protocol):
