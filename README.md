@@ -66,6 +66,8 @@ capabilities rather than becoming implicit responsibilities of this repository.
 
 ## Generic MCP interface
 
+For the current route inventory, JSON representations, error behavior, compatibility constraints, and ADR-0031 adoption gaps, see [REST API contract inventory](docs/REST_API.md).
+
 Loom exposes a generic MCP server through scripts/loom_mcp_server.py. MCP is a
 protocol boundary, not a client-specific adapter. Any MCP-capable host can consume
 the same Loom server; Crush and Claude are examples of clients, not special cases.
