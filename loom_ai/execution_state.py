@@ -20,15 +20,13 @@ from loom_ai.intent import Intent
 EXECUTION_STATE_VERSION = 2
 _SUPPORTED_STATE_VERSIONS = frozenset({1, EXECUTION_STATE_VERSION})
 _TERMINAL_STATUSES = frozenset({"success", "failed", "cancelled"})
-_LIFECYCLE_STATES = frozenset(
-    {"running", "interrupted", "completed", "failed", "cancelled"}
-)
+_LIFECYCLE_STATES = frozenset({"running", "interrupted", "completed"})
 _LEGACY_LIFECYCLE = {
     "running": "running",
     "interrupted": "interrupted",
     "success": "completed",
-    "failed": "failed",
-    "cancelled": "cancelled",
+    "failed": "completed",
+    "cancelled": "completed",
 }
 
 
