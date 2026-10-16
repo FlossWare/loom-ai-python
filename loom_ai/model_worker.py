@@ -48,7 +48,12 @@ class ModelWorker:
                     metadata={"intent_id": intent.intent_id},
                 )
             )
-            if response.provider != self.provider.provider_id:
+            if (
+                response.provider != self.provider.provider_id
+                or response.provenance.get("provider", response.provider)
+                != response.provider
+                or response.provenance.get("model", response.model) != response.model
+            ):
                 raise ValueError("model provider provenance mismatch")
         except Exception:
             return WorkerResult(
