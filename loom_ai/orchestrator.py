@@ -15,6 +15,7 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter
+from loom_ai.evaluation import EvaluationRecord
 from loom_ai.execution_state import ExecutionState, ExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.worker import (
@@ -207,6 +208,32 @@ class Orchestrator:
             raise KeyError(f"execution not found: {execution_id}")
         return execution
 
+    def record_evaluation(
+        self, execution_id: str, evaluation: EvaluationRecord
+    ) -> ExecutionState:
+        """Append an attributable evaluation without rewriting lifecycle or result."""
+        if not isinstance(evaluation, EvaluationRecord):
+            raise TypeError("evaluation must be an EvaluationRecord")
+        store = self._require_store()
+        with self._lock:
+            execution = store.load(execution_id)
+            if execution is None:
+                raise KeyError(f"execution not found: {execution_id}")
+            if evaluation.execution_id not in (None, execution_id):
+                raise ValueError("evaluation execution_id does not match target execution")
+            if evaluation.intent_id not in (None, execution.intent.intent_id):
+                raise ValueError("evaluation intent_id does not match execution Intent")
+            record = evaluation.finalized(
+                execution_id=execution_id,
+                intent_id=execution.intent.intent_id,
+            )
+            updated = replace(
+                execution,
+                evaluations=execution.evaluations + (record,),
+            )
+            store.save(updated)
+            return updated
+
     def cancel(
         self,
         execution_id: str,
@@ -285,6 +312,7 @@ class Orchestrator:
                     state=state,
                     evidence=evidence,
                     status="cancelled",
+                    lifecycle="cancelled",
                     metadata=metadata,
                 )
                 store.save(updated)
@@ -335,6 +363,7 @@ class Orchestrator:
                 state=state,
                 evidence=evidence,
                 status="cancelled",
+                lifecycle="cancelled",
                 metadata=metadata,
             )
             store.save(updated)
@@ -389,7 +418,14 @@ class Orchestrator:
             token = CancellationToken()
             metadata = dict(execution.metadata)
             metadata["phase"] = "continued"
-            store.save(replace(execution, status="running", metadata=metadata))
+            store.save(
+                replace(
+                    execution,
+                    status="running",
+                    lifecycle="running",
+                    metadata=metadata,
+                )
+            )
             self._active[execution_id] = token
 
         context_state = dict(execution.state)
@@ -662,6 +698,12 @@ def _state_from_result(
         status=status,
         metadata=metadata,
         result=_result_to_dict(result),
+        lifecycle={
+            WorkerStatus.SUCCESS: "completed",
+            WorkerStatus.FAILED: "failed",
+            WorkerStatus.CANCELLED: "cancelled",
+        }[result.status],
+        evaluations=prior.evaluations if prior is not None else (),
     )
 
 
