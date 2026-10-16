@@ -312,7 +312,7 @@ class Orchestrator:
                     state=state,
                     evidence=evidence,
                     status="cancelled",
-                    lifecycle="cancelled",
+                    lifecycle="completed",
                     metadata=metadata,
                 )
                 store.save(updated)
@@ -363,7 +363,7 @@ class Orchestrator:
                 state=state,
                 evidence=evidence,
                 status="cancelled",
-                lifecycle="cancelled",
+                lifecycle="completed",
                 metadata=metadata,
             )
             store.save(updated)
@@ -698,11 +698,7 @@ def _state_from_result(
         status=status,
         metadata=metadata,
         result=_result_to_dict(result),
-        lifecycle={
-            WorkerStatus.SUCCESS: "completed",
-            WorkerStatus.FAILED: "failed",
-            WorkerStatus.CANCELLED: "cancelled",
-        }[result.status],
+        lifecycle="completed",
         evaluations=prior.evaluations if prior is not None else (),
     )
 
