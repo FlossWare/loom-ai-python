@@ -140,10 +140,22 @@ class SequentialArbitrationPipeline:
             }
             for record in history
         ]
+        output = {
+            "selected_result": selected,
+            "stages": [
+                {
+                    "stage_id": record["stage_id"],
+                    "worker_results": record["worker_results"],
+                    "selected_result": record["selected_result"],
+                    "reason": record["reason"],
+                }
+                for record in history
+            ],
+        }
         return WorkerResult(
             worker_id=self.worker_id,
             status=selected.status,
-            output=selected.output,
+            output=output,
             evidence=tuple(evidence),
             error=selected.error
             if selected.status in (WorkerStatus.FAILED, WorkerStatus.CANCELLED)
