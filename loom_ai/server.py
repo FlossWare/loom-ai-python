@@ -125,8 +125,10 @@ class LoomServer:
                         return
                     try:
                         execution = owner.orchestrator.observe(execution_id)
-                    except KeyError as exc:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+                    except KeyError:
+                        self._send(
+                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                        )
                         return
                     except ExecutionStateCorruptError as exc:
                         self._send(
