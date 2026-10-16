@@ -380,7 +380,9 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
             urlopen(f"{base_url}/executions/missing")
         except HTTPError as exc:
             assert exc.code == 404
-            assert json.load(exc)["error"] == "execution not found"
+            payload = json.load(exc)
+            assert payload["error"] == "execution not found"
+            assert payload["category"] == "execution.not_found"
         else:
             raise AssertionError("expected missing execution to return HTTP 404")
 
