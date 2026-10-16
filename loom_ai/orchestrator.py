@@ -182,9 +182,7 @@ class Orchestrator:
                     output=result.output,
                 )
             cancellation = (
-                _cancellation_metadata(token)
-                if control_cause == "cancelled"
-                else None
+                _cancellation_metadata(token) if control_cause == "cancelled" else None
             )
             latest = self.execution_store.load(actual_id)
             self.execution_store.save(
