@@ -16,11 +16,13 @@ from urllib.request import Request, urlopen
 
 from mcp.server import MCPServer
 
-DEFAULT_TIMEOUT = 30
+DEFAULT_TIMEOUT = 900
 
 
 class LoomHTTPClient:
     def __init__(self, base_url: str, timeout: int = DEFAULT_TIMEOUT) -> None:
+        if timeout <= 0:
+            raise ValueError("timeout must be a positive number of seconds")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 

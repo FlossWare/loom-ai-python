@@ -113,6 +113,13 @@ with:
 
     LOOM_URL=http://127.0.0.1:8000
 
+The MCP adapter allows up to 900 seconds per HTTP request by default so a
+synchronous Loom submission or continuation is not prematurely abandoned.
+Override this with the positive-integer environment variable
+`LOOM_HTTP_TIMEOUT` when configuring the MCP server. The timeout bounds how
+long the client waits; it does not cancel an execution that may still be running
+on the Loom server.
+
 For real submit/observe/continue behavior across process boundaries, point
 LOOM_URL at a Loom server profile backed by a durable ExecutionStateStore (for
 example, the durable dogfood profile). The default Loom transport-smoke server
