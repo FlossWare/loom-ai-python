@@ -39,6 +39,7 @@ class ExecutionState:
     status: str = "interrupted"
     metadata: Mapping[str, Any] = field(default_factory=dict)
     representation_version: int = EXECUTION_STATE_VERSION
+    result: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.execution_id.strip():
@@ -144,6 +145,7 @@ def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
         "evidence": [dict(item) for item in execution.evidence],
         "status": execution.status,
         "metadata": dict(execution.metadata),
+        "result": dict(execution.result) if execution.result is not None else None,
     }
 
 
@@ -164,6 +166,9 @@ def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
         isinstance(item, dict) for item in evidence
     ):
         raise TypeError("evidence must be a list of JSON objects")
+    result = payload.get("result")
+    if result is not None and not isinstance(result, dict):
+        raise TypeError("result must be a JSON object or null")
 
     return ExecutionState(
         execution_id=expected_id,
@@ -180,5 +185,6 @@ def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
         evidence=tuple(evidence),
         status=payload["status"],
         metadata=dict(payload.get("metadata", {})),
+        result=dict(result) if result is not None else None,
         representation_version=payload["representation_version"],
     )
