@@ -123,6 +123,25 @@ def test_concurrent_create_only_writes_claim_identity_once(tmp_path) -> None:
     assert stores[0].load("execution-1") in states
 
 
+def test_concurrent_saves_never_publish_a_partial_snapshot(tmp_path) -> None:
+    stores = [FileExecutionStateStore(tmp_path), FileExecutionStateStore(tmp_path)]
+    states = [
+        build_state(),
+        replace(build_state(), state={"writer": "second", "payload": "x" * 4096}),
+    ]
+    barrier = Barrier(2)
+
+    def save(index: int) -> None:
+        barrier.wait(timeout=2)
+        stores[index].save(states[index])
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(save, range(2)))
+
+    restored = stores[0].load("execution-1")
+    assert restored in states
+
+
 def test_missing_execution_state_is_distinct_from_corruption(tmp_path) -> None:
     store = FileExecutionStateStore(tmp_path)
 
