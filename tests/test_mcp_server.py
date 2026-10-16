@@ -366,3 +366,55 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
         finally:
             second_server.close()
             second_thread.join(timeout=2)
+
+
+def test_mcp_submit_forwards_optional_intent_fields_without_loss() -> None:
+    class RecordingClient(FakeClient):
+        def __init__(self) -> None:
+            self.submitted_arguments = None
+
+        def submit(self, arguments):
+            self.submitted_arguments = arguments
+            return {"execution_id": "exec-forwarded", "status": "accepted"}
+
+    recording = RecordingClient()
+
+    async def run() -> None:
+        async with Client(create_server(recording)) as client:
+            submitted = await client.call_tool(
+                "loom_submit_intent",
+                {
+                    "goal": "preserve intent contract across MCP",
+                    "title": "MCP field forwarding",
+                    "requirements": ["keep requirements"],
+                    "constraints": ["keep constraints"],
+                    "acceptance": ["keep acceptance"],
+                    "intent_id": "intent-forwarding",
+                    "execution_id": "execution-forwarding",
+                    "deadline": "2030-01-02T03:04:05Z",
+                    "provenance": {
+                        "client": "test-client",
+                        "task_path": "tests/test_mcp_server.py",
+                    },
+                },
+            )
+            assert submitted.is_error is False
+            payload = json.loads(submitted.content[0].text)
+            assert payload["execution_id"] == "exec-forwarded"
+
+    asyncio.run(run())
+
+    assert recording.submitted_arguments == {
+        "goal": "preserve intent contract across MCP",
+        "title": "MCP field forwarding",
+        "requirements": ["keep requirements"],
+        "constraints": ["keep constraints"],
+        "acceptance": ["keep acceptance"],
+        "intent_id": "intent-forwarding",
+        "execution_id": "execution-forwarding",
+        "deadline": "2030-01-02T03:04:05Z",
+        "provenance": {
+            "client": "test-client",
+            "task_path": "tests/test_mcp_server.py",
+        },
+    }
