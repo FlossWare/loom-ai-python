@@ -107,3 +107,57 @@ def test_http_routes_delegate_submit_observe_and_continue_to_orchestrator() -> N
         instance.shutdown()
         instance.server_close()
         thread.join(timeout=2)
+
+
+def test_http_exposes_cancelled_execution_status(tmp_path) -> None:
+    from tempfile import TemporaryDirectory
+
+    from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+    from loom_ai.execution_state import FileExecutionStateStore
+    from loom_ai.worker import WorkerContext, WorkerStatus
+
+    class CancelledWorker:
+        worker_id = "cancelled-worker"
+
+        def execute(self, _context: WorkerContext) -> WorkerResult:
+            return WorkerResult(
+                worker_id=self.worker_id,
+                status=WorkerStatus.CANCELLED,
+                error="cancelled by caller",
+            )
+
+    def evaluate(
+        result: WorkerResult, _context: WorkerContext
+    ) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
+
+    with TemporaryDirectory(dir=tmp_path) as state_dir:
+        server = LoomServer(
+            Arbiter([CancelledWorker()], evaluate),
+            execution_store=FileExecutionStateStore(state_dir),
+            port=0,
+        )
+        instance = _HTTPServer((server.host, server.port), server._handler_factory())
+        thread = Thread(target=instance.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://{server.host}:{instance.server_address[1]}"
+            request = Request(
+                f"{base}/intents",
+                data=json.dumps({"goal": "cancel task"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                submitted = json.load(response)
+
+            assert submitted["status"] == "cancelled"
+            execution_id = submitted["execution_id"]
+            with urlopen(f"{base}/executions/{execution_id}") as response:
+                state = json.load(response)
+            assert state["status"] == "cancelled"
+            assert state["state"]["last_status"] == "cancelled"
+        finally:
+            instance.shutdown()
+            instance.server_close()
+            thread.join(timeout=2)
