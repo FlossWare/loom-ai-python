@@ -74,12 +74,64 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert worker.contexts[1].intent == intent
     assert worker.contexts[1].evidence
     assert observed.status == "success"
+    assert observed.result is not None
+    assert observed.result["worker_id"] == "fixed"
+    assert observed.result["status"] == "success"
     phases = [
         item["phase"]
         for item in observed.evidence
         if item.get("type") == "execution-phase"
     ]
     assert phases == ["initial", "continued"]
+
+
+
+
+def test_continuation_preserves_state_metadata_and_prior_structured_result(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    store = FileExecutionStateStore(tmp_path)
+    intent = Intent(goal="continue with saved workspace and result")
+    prior_result = {
+        "worker_id": "previous-worker",
+        "status": "success",
+        "output": {"artifact": "reviewed patch"},
+        "evidence": [{"path": "src/example.py"}],
+        "error": "",
+        "metadata": {"stage": "solve"},
+    }
+    store.save(
+        ExecutionState(
+            execution_id="context-preservation",
+            intent=intent,
+            state={
+                "phase": "initial",
+                "workspace": "/workspace/repo",
+                "repository_revision": "abc123",
+            },
+            evidence=({"source": "prior-stage"},),
+            status="success",
+            metadata={"caller": "test"},
+            result=prior_result,
+        )
+    )
+    orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
+
+    orchestrator.continue_execution("context-preservation")
+    observed = orchestrator.observe("context-preservation")
+
+    continued_context = worker.contexts[0]
+    assert continued_context.state["workspace"] == "/workspace/repo"
+    assert continued_context.state["repository_revision"] == "abc123"
+    assert continued_context.state["last_execution_result"] == prior_result
+    assert observed.state["workspace"] == "/workspace/repo"
+    assert observed.state["repository_revision"] == "abc123"
+    assert observed.metadata["caller"] == "test"
+    assert observed.result is not None
+    assert observed.result["worker_id"] == "fixed"
+    assert observed.result["status"] == "success"
+    assert observed.evidence[0] == {"source": "prior-stage"}
 
 
 class RecordingOrchestrator:
@@ -198,6 +250,8 @@ def test_unexpected_worker_exception_is_persisted_as_failure(tmp_path) -> None:
     state = orchestrator.observe("execution-failed")
     assert state.status == "failed"
     assert state.metadata["worker_id"] == "orchestrator"
+    assert state.result is not None
+    assert state.result["status"] == "failed"
     assert any(
         item.get("type") == "execution-exception"
         and item.get("exception_type") == "ValueError"
