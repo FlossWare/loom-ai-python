@@ -116,6 +116,13 @@ class Arbiter:
                 )
             if result.status is WorkerStatus.CANCELLED:
                 return self._result(outputs, evidence, "cancelled")
+            if result.metadata.get("continuation_pending") is True:
+                return self._result(
+                    outputs,
+                    evidence,
+                    "interrupted",
+                    str(result.metadata.get("reason") or "nested Arbiter interrupted"),
+                )
 
             evaluation = self.evaluator(result, child_context)
             if evaluation.decision is ArbiterDecision.COMPLETE:
