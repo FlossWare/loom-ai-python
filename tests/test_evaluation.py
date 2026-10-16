@@ -245,8 +245,11 @@ def test_evaluation_cannot_be_recorded_before_a_terminal_result(tmp_path) -> Non
             lifecycle="running",
         )
     )
+    def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.COMPLETE)
+
     orchestrator = Orchestrator(
-        Arbiter([SuccessfulWorker()], lambda result, context: WorkerEvaluation(ArbiterDecision.COMPLETE)),
+        Arbiter([SuccessfulWorker()], evaluate),
         execution_store=store,
     )
 
