@@ -6,6 +6,11 @@ owned by FlossWare/loom.
 """
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.configured_worker import (
+    ConfiguredModelWorker,
+    WorkerActivationError,
+    activate_model_worker,
+)
 from loom_ai.evaluation import EvaluationRecord, EvaluationStatus
 from loom_ai.execution_state import (
     ExecutionState,
@@ -48,6 +53,7 @@ __all__ = [
     "ArbiterDecision",
     "CancellationResult",
     "CancellationToken",
+    "ConfiguredModelWorker",
     "ArbitrationStage",
     "EvaluationRecord",
     "EvaluationStatus",
@@ -69,6 +75,7 @@ __all__ = [
     "SequentialArbitrationPipeline",
     "StageEvaluation",
     "ValidatedWorkerConfiguration",
+    "WorkerActivationError",
     "WorkerConfigurationError",
     "WorkerLimits",
     "Worker",
@@ -76,6 +83,7 @@ __all__ = [
     "WorkerEvaluation",
     "WorkerResult",
     "WorkerStatus",
+    "activate_model_worker",
     "validate_worker_configuration",
 ]
 
