@@ -137,6 +137,33 @@ This is a qualification profile, not a production workflow or a deployed-service
 restart test. Systemd/deployment qualification is tracked separately in
 `FlossWare/loom-setup`.
 
+## Real Crush-to-Loom dogfood
+
+To qualify a fresh Crush session against a real checkout of `FlossWare/loom-ai`,
+use:
+
+    python scripts/dogfood-crush-mcp-real.py --timeout-seconds 900
+
+The harness creates a disposable project-local `.crushrc` that explicitly
+configures the generic Loom MCP server and a FlossWare OpenAI-compatible model
+provider. The default gateway is `http://127.0.0.1:8765/v1`, with model
+`flossware/flossware`. Ensure that gateway is running and reachable from the
+dogfood host. Override the defaults with `FLOSSWARE_CRUSH_BASE_URL` and
+`FLOSSWARE_CRUSH_MODEL`, or pass `--provider-base-url` and `--model`
+directly.
+
+The harness uses an isolated temporary Crush data directory, so it does not
+depend on provider settings in the user's global Crush profile. It makes one
+bounded documentation change in the real `loom-ai` repository, submits and
+continues the execution through generic MCP, then independently checks the
+persisted execution status, intent identity, provenance, changed-file scope,
+and `git diff --check`.
+
+Use `--expect-failure` to qualify the negative path. That run must preserve a
+failed verification result rather than misreporting success. A successful unit
+or MCP smoke test is not a substitute for this fresh-agent qualification; record
+the execution ID and evidence when the full path passes.
+
 ## Development
 
     python -m ruff format --check .
