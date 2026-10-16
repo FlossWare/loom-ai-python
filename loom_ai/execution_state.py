@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -36,6 +37,10 @@ class ExecutionStateError(ValueError):
 
 class ExecutionStateCorruptError(ExecutionStateError):
     """Raised when durable state exists but cannot be trusted or decoded."""
+
+
+class ExecutionStateConflictError(ExecutionStateError):
+    """Raised when a create-only execution identity is already present."""
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,9 @@ def execution_result_reference(execution: ExecutionState) -> str | None:
 class ExecutionStateStore(Protocol):
     """Minimal durable store port used by Loom execution infrastructure."""
 
+    def create(self, execution: ExecutionState) -> None:
+        """Atomically create a new execution identity without replacing existing state."""
+
     def save(self, execution: ExecutionState) -> None:
         """Durably replace the current snapshot for an execution identity."""
 
@@ -121,6 +129,39 @@ class FileExecutionStateStore:
     def __init__(self, root: str | os.PathLike[str]) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+
+    def create(self, execution: ExecutionState) -> None:
+        """Atomically create a snapshot only if its execution identity is unused."""
+        payload = _execution_to_dict(execution)
+        data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        path = self._path(execution.execution_id)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=self.root,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(data)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            os.link(temporary_path, path)
+        except FileExistsError as exc:
+            raise ExecutionStateConflictError(
+                f"execution already exists: {execution.execution_id}"
+            ) from exc
+        except OSError as exc:
+            raise ExecutionStateError(
+                f"could not create execution {execution.execution_id!r}"
+            ) from exc
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def save(self, execution: ExecutionState) -> None:
         """Persist one execution snapshot atomically."""
