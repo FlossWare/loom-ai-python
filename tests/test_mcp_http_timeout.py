@@ -41,6 +41,7 @@ def test_http_client_preserves_http_error_details(monkeypatch) -> None:
     ):
         client.observe("execution-1")
 
+
 @pytest.mark.parametrize("timeout", [0, -1])
 def test_http_client_rejects_non_positive_timeout(timeout: int) -> None:
     with pytest.raises(
