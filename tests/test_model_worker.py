@@ -93,7 +93,9 @@ def test_model_worker_sends_intent_requirements_constraints_and_acceptance() -> 
     assert "- be concise" in provider.received.prompt
     assert "- preserve facts" in provider.received.prompt
     assert "- no credentials" in provider.received.prompt
-    assert "- the summary preserves every verified fact" in provider.received.prompt
+    assert (
+        "- the summary preserves every verified fact" in provider.received.prompt
+    )
     assert "- no unsupported claims" in provider.received.prompt
     assert provider.received.metadata["intent_id"] == intent.intent_id
 
