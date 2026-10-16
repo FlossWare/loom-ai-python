@@ -66,7 +66,6 @@ def test_orchestrator_persists_cancellation_as_distinct_terminal_status(
     assert {"source": "fixed-worker"} in observed.evidence
 
 
-
 def test_duplicate_execution_id_is_rejected_without_replacing_prior_result(
     tmp_path,
 ) -> None:
