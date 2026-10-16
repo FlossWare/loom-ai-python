@@ -25,6 +25,7 @@ class EvaluationRecord:
     status: EvaluationStatus = EvaluationStatus.NOT_EVALUATED
     execution_id: str | None = None
     intent_id: str | None = None
+    result_reference: str | None = None
     criteria: tuple[str, ...] = ()
     criteria_version: str | None = None
     evaluator: str | None = None
@@ -66,6 +67,7 @@ class EvaluationRecord:
             "status": self.status.value,
             "execution_id": self.execution_id,
             "intent_id": self.intent_id,
+            "result_reference": self.result_reference,
             "criteria": list(self.criteria),
             "criteria_version": self.criteria_version,
             "evaluator": self.evaluator,
@@ -82,6 +84,7 @@ class EvaluationRecord:
             status=EvaluationStatus(value.get("status", "not_evaluated")),
             execution_id=value.get("execution_id"),
             intent_id=value.get("intent_id"),
+            result_reference=value.get("result_reference"),
             criteria=tuple(value.get("criteria", ())),
             criteria_version=value.get("criteria_version"),
             evaluator=value.get("evaluator"),
