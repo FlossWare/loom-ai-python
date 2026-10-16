@@ -33,7 +33,9 @@ class ModelRequest:
             or not isfinite(self.timeout_seconds)
             or self.timeout_seconds <= 0
         ):
-            raise ValueError("ModelRequest timeout_seconds must be a positive finite number")
+            raise ValueError(
+                "ModelRequest timeout_seconds must be a positive finite number"
+            )
         object.__setattr__(self, "metadata", _freeze(self.metadata))
 
 
