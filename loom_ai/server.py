@@ -301,6 +301,7 @@ def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
         "state": execution.state,
         "evidence": execution.evidence,
         "metadata": execution.metadata,
+        "result": execution.result,
         "representation_version": execution.representation_version,
         "provenance": execution.intent.provenance,
     }
