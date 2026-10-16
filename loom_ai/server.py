@@ -30,7 +30,7 @@ class _LoomHTTPServer(ThreadingHTTPServer):
 
 
 class LoomServer:
-    """HTTP transport boundary for a configured Loom Arbiter."""
+    """HTTP transport adapter for a configured Loom Orchestrator."""
 
     def __init__(
         self,
