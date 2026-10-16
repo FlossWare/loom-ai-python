@@ -171,7 +171,10 @@ class Orchestrator:
 
         with self._lock:
             control_cause = _control_cause(token, absolute_deadline)
-            if control_cause == "cancelled" and result.status is not WorkerStatus.CANCELLED:
+            if (
+                control_cause == "cancelled"
+                and result.status is not WorkerStatus.CANCELLED
+            ):
                 result = _cancelled_result(result, token)
             elif control_cause == "deadline_exceeded":
                 result = _deadline_result(
@@ -459,7 +462,10 @@ class Orchestrator:
 
         with self._lock:
             control_cause = _control_cause(token, deadline)
-            if control_cause == "cancelled" and result.status is not WorkerStatus.CANCELLED:
+            if (
+                control_cause == "cancelled"
+                and result.status is not WorkerStatus.CANCELLED
+            ):
                 result = _cancelled_result(result, token)
             elif control_cause == "deadline_exceeded":
                 result = _deadline_result(evidence=result.evidence, output=result.output)
