@@ -69,7 +69,9 @@ class ExecutionState:
                 f"unsupported execution lifecycle: {self.lifecycle!r}"
             )
         if not all(isinstance(item, EvaluationRecord) for item in self.evaluations):
-            raise ExecutionStateError("evaluations must contain EvaluationRecord values")
+            raise ExecutionStateError(
+                "evaluations must contain EvaluationRecord values"
+            )
 
     @property
     def evaluation(self) -> EvaluationRecord:
