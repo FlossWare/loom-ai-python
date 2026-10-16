@@ -29,7 +29,13 @@ from loom_ai.pipeline import (
     StageEvaluation,
 )
 from loom_ai.server import LoomServer
-from loom_ai.worker_configuration import (\n    ValidatedWorkerConfiguration,\n    WorkerConfigurationError,\n    WorkerLimits,\n    validate_worker_configuration,\n)\nfrom loom_ai.worker import (
+from loom_ai.worker_configuration import (
+    ValidatedWorkerConfiguration,
+    WorkerConfigurationError,
+    WorkerLimits,
+    validate_worker_configuration,
+)
+from loom_ai.worker import (
     CancellationToken,
     Worker,
     WorkerContext,
