@@ -17,18 +17,30 @@ from loom_ai.fake_model_provider import FakeModelProvider
 from loom_ai.intent import Intent, IntentParseError
 from loom_ai.model import ModelProvider, ModelRequest, ModelResponse
 from loom_ai.model_worker import ModelWorker
-from loom_ai.orchestrator import Orchestrator, OrchestratorSubmission
+from loom_ai.orchestrator import (
+    CancellationResult,
+    Orchestrator,
+    OrchestratorSubmission,
+)
 from loom_ai.pipeline import (
     ArbitrationStage,
     SequentialArbitrationPipeline,
     StageEvaluation,
 )
 from loom_ai.server import LoomServer
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    CancellationToken,
+    Worker,
+    WorkerContext,
+    WorkerResult,
+    WorkerStatus,
+)
 
 __all__ = [
     "Arbiter",
     "ArbiterDecision",
+    "CancellationResult",
+    "CancellationToken",
     "ArbitrationStage",
     "ExecutionState",
     "ExecutionStateCorruptError",
