@@ -17,6 +17,7 @@ from loom_ai.fake_model_provider import FakeModelProvider
 from loom_ai.intent import Intent, IntentParseError
 from loom_ai.model import ModelProvider, ModelRequest, ModelResponse
 from loom_ai.model_worker import ModelWorker
+from loom_ai.orchestrator import Orchestrator, OrchestratorSubmission
 from loom_ai.pipeline import (
     ArbitrationStage,
     SequentialArbitrationPipeline,
@@ -42,6 +43,8 @@ __all__ = [
     "ModelRequest",
     "ModelResponse",
     "ModelWorker",
+    "Orchestrator",
+    "OrchestratorSubmission",
     "SequentialArbitrationPipeline",
     "StageEvaluation",
     "Worker",
