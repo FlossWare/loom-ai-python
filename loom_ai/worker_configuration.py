@@ -8,6 +8,7 @@ credentials, contact model providers, or invoke capabilities.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Mapping
 
 
@@ -202,7 +203,7 @@ def validate_worker_configuration(
         policy_ref=policy_ref,
         approval_required=approval_required,
         limits=WorkerLimits(**limit_values),
-        metadata=dict(metadata),
+        metadata=MappingProxyType(dict(metadata)),
     )
 
 
