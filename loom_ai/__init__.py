@@ -36,6 +36,12 @@ from loom_ai.worker import (
     WorkerResult,
     WorkerStatus,
 )
+from loom_ai.worker_configuration import (
+    ValidatedWorkerConfiguration,
+    WorkerConfigurationError,
+    WorkerLimits,
+    validate_worker_configuration,
+)
 
 __all__ = [
     "Arbiter",
@@ -62,11 +68,15 @@ __all__ = [
     "OrchestratorSubmission",
     "SequentialArbitrationPipeline",
     "StageEvaluation",
+    "ValidatedWorkerConfiguration",
+    "WorkerConfigurationError",
+    "WorkerLimits",
     "Worker",
     "WorkerContext",
     "WorkerEvaluation",
     "WorkerResult",
     "WorkerStatus",
+    "validate_worker_configuration",
 ]
 
 __version__ = "0.1"
