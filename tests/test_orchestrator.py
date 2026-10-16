@@ -226,7 +226,9 @@ def test_http_application_value_error_is_not_misreported_as_bad_request() -> Non
         with pytest.raises(HTTPError) as captured:
             urlopen(request)
         assert captured.value.code == 500
-        assert "error" in json.load(captured.value)
+        payload = json.load(captured.value)
+        assert "error" in payload
+        assert payload["execution_id"]
     finally:
         server.close()
         thread.join(timeout=2)
