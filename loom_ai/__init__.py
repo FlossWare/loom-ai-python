@@ -36,7 +36,6 @@ from loom_ai.worker import (
     WorkerResult,
     WorkerStatus,
 )
-
 from loom_ai.worker_configuration import (
     ValidatedWorkerConfiguration,
     WorkerConfigurationError,
