@@ -60,13 +60,13 @@ def build_crushrc(
     disposable project profile instead of launching Crush with no providers.
     """
     return (
-        "# Disposable real-repository Loom dogfood configuration.\\n"
-        f'option data-directory "{crush_data}"\\n'
-        f'provider add flossware --type openai-compat --base-url "{provider_base_url}"\\n'
+        "# Disposable real-repository Loom dogfood configuration.\n"
+        f'option data-directory "{crush_data}"\n'
+        f'provider add flossware --type openai-compat --base-url "{provider_base_url}"\n'
         'model add flossware/flossware --name "FlossWare" '
-        "--context-window 128000 --default-max-tokens 20000\\n"
+        "--context-window 128000 --default-max-tokens 20000\n"
         f'mcp add loom --command "{python}" --args "{mcp_server}" '
-        f'--env LOOM_URL "{loom_url}" --timeout 30\\n'
+        f'--env LOOM_URL "{loom_url}" --timeout 30\n'
     )
 
 
