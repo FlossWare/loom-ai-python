@@ -15,6 +15,7 @@ from loom_ai.execution_state import ExecutionState, FileExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
     CancellationResult,
+    ExecutionAlreadyExistsError,
     Orchestrator,
     OrchestratorSubmission,
 )
@@ -63,6 +64,33 @@ def test_orchestrator_persists_cancellation_as_distinct_terminal_status(
     assert observed.state["last_status"] == "cancelled"
     assert observed.terminal
     assert {"source": "fixed-worker"} in observed.evidence
+
+
+
+def test_duplicate_execution_id_is_rejected_without_replacing_prior_result(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    store = FileExecutionStateStore(tmp_path)
+    orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
+    original_intent = Intent(goal="original accepted work")
+    first = orchestrator.submit(original_intent, execution_id="stable-execution")
+
+    with pytest.raises(
+        ExecutionAlreadyExistsError,
+        match="execution already exists: stable-execution",
+    ):
+        orchestrator.submit(
+            Intent(goal="different work must not replace it"),
+            execution_id="stable-execution",
+        )
+
+    observed = orchestrator.observe("stable-execution")
+    assert first.result.status is WorkerStatus.SUCCESS
+    assert len(worker.contexts) == 1
+    assert observed.intent == original_intent
+    assert observed.result is not None
+    assert observed.result["output"][0]["output"] == {"answer": 42}
 
 
 def test_orchestrator_continuation_preserves_context_and_appends_evidence(
