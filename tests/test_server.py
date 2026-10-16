@@ -167,7 +167,14 @@ def test_server_rejects_overlarge_payload() -> None:
 def test_server_persists_and_continues_execution_state() -> None:
     with TemporaryDirectory() as state_dir:
 
-        def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        def evaluate(
+            result: WorkerResult, context: WorkerContext
+        ) -> WorkerEvaluation:
+            if result.successful and context.state.get("phase") == "initial":
+                return WorkerEvaluation(
+                    ArbiterDecision.INTERRUPT,
+                    reason="initial phase awaits continuation",
+                )
             return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
         server = LoomServer(
@@ -203,6 +210,7 @@ def test_server_persists_and_continues_execution_state() -> None:
             assert persisted["execution_id"] == execution_id
             assert persisted["intent_id"]
             assert persisted["status"] == "success"
+            assert persisted["lifecycle"] == "interrupted"
             assert any(
                 item.get("phase") == "initial"
                 for item in persisted["evidence"]
