@@ -8,7 +8,7 @@ from typing import Mapping
 
 from loom_ai.model import ModelProvider
 from loom_ai.model_worker import ModelWorker
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 from loom_ai.worker_configuration import ValidatedWorkerConfiguration
 
 
@@ -40,7 +40,6 @@ class ConfiguredModelWorker:
             model=model,
             worker_id=configuration.worker_id,
         )
-        self._started: dict[str, float] = {}
 
     @property
     def worker_id(self) -> str:
