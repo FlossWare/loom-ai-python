@@ -24,7 +24,7 @@ from loom_ai.execution_state import (
     ExecutionStateStore,
 )
 from loom_ai.intent import Intent
-from loom_ai.orchestrator import Orchestrator, parse_deadline
+from loom_ai.orchestrator import Orchestrator, TaskEvaluator, parse_deadline
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
@@ -46,9 +46,14 @@ class LoomServer:
         port: int = 8000,
         execution_store: ExecutionStateStore | None = None,
         orchestrator: Orchestrator | None = None,
+        task_evaluator: TaskEvaluator | None = None,
     ) -> None:
         if orchestrator is not None:
-            if arbiter is not None or execution_store is not None:
+            if (
+                arbiter is not None
+                or execution_store is not None
+                or task_evaluator is not None
+            ):
                 raise ValueError(
                     "pass either orchestrator or arbiter/execution_store, not both"
                 )
@@ -59,6 +64,7 @@ class LoomServer:
             self.orchestrator = Orchestrator(
                 arbiter,
                 execution_store=execution_store,
+                task_evaluator=task_evaluator,
             )
         self.host = host
         self.port = port
@@ -359,6 +365,10 @@ def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
         "execution_id": execution.execution_id,
         "intent_id": execution.intent.intent_id,
         "status": execution.status,
+        "outcome_status": execution.outcome_status,
+        "lifecycle_status": execution.lifecycle_status,
+        "latest_evaluation_status": execution.latest_evaluation_status,
+        "evaluations": execution.evaluations,
         "state": execution.state,
         "evidence": execution.evidence,
         "metadata": execution.metadata,
