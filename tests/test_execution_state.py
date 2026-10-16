@@ -9,6 +9,7 @@ import pytest
 
 from loom_ai.execution_state import (
     ExecutionState,
+    ExecutionStateConflictError,
     ExecutionStateCorruptError,
     ExecutionStateError,
     FileExecutionStateStore,
@@ -63,6 +64,38 @@ def test_file_store_round_trips_execution_state(tmp_path) -> None:
     assert restored.result["output"]["selected_result"]["output"] == {
         "decision": "accept"
     }
+
+
+def test_create_only_store_write_rejects_existing_identity_without_overwrite(
+    tmp_path,
+) -> None:
+    store = FileExecutionStateStore(tmp_path)
+    original = build_state()
+    store.create(original)
+
+    replacement = replace(
+        original,
+        intent=Intent(goal="replacement must not win", intent_id="intent-replacement"),
+    )
+    with pytest.raises(
+        ExecutionStateConflictError,
+        match="execution already exists: execution-1",
+    ):
+        store.create(replacement)
+
+    assert store.load("execution-1") == original
+
+
+def test_create_only_store_write_is_safe_across_store_instances(tmp_path) -> None:
+    first_store = FileExecutionStateStore(tmp_path)
+    second_store = FileExecutionStateStore(tmp_path)
+    original = build_state()
+    first_store.create(original)
+
+    with pytest.raises(ExecutionStateConflictError):
+        second_store.create(replace(original, state={"different": True}))
+
+    assert second_store.load("execution-1") == original
 
 
 def test_missing_execution_state_is_distinct_from_corruption(tmp_path) -> None:
