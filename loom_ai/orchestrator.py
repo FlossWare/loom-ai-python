@@ -148,16 +148,18 @@ class Orchestrator:
                     )
                     self._active.pop(actual_id, None)
                     raise
+                latest = self.execution_store.load(actual_id)
                 self.execution_store.save(
                     _state_from_result(
                         actual_id,
                         intent,
                         result,
                         phase="initial",
+                        prior=latest,
                         deadline=absolute_deadline,
                         cancellation=(
                             _cancellation_metadata(token)
-                            if token.requested
+                            if control_cause == "cancelled"
                             else None
                         ),
                     )
@@ -431,17 +433,18 @@ class Orchestrator:
                     )
                     self._active.pop(execution_id, None)
                     raise
+                latest = store.load(execution_id) or execution
                 store.save(
                     _state_from_result(
                         execution_id,
                         execution.intent,
                         result,
                         phase="continued",
-                        prior=execution,
+                        prior=latest,
                         deadline=deadline,
                         cancellation=(
                             _cancellation_metadata(token)
-                            if token.requested
+                            if control_cause == "cancelled"
                             else None
                         ),
                     )
