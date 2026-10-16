@@ -49,13 +49,25 @@ def config() -> dict:
 
 GATEWAYS = {"default-gateway": {"coding-balanced", "research-balanced"}}
 CAPABILITIES = {"repository.read", "verification.run"}
+POLICIES = {
+    "bounded-coding": {
+        "approval_required": True,
+        "allowed_capabilities": [
+            "repository.read",
+            "verification.run",
+            "optional.search",
+        ],
+        "denied_capabilities": ["credential.read"],
+    }
+}
 
 
-def validate(value: dict):
+def validate(value: dict, *, policies=POLICIES):
     return validate_worker_configuration(
         value,
         gateway_selections=GATEWAYS,
         available_capabilities=CAPABILITIES,
+        policy_registry=policies,
     )
 
 
@@ -127,10 +139,22 @@ def test_required_unavailable_capability_prevents_activation() -> None:
     value["tools"] = [{"capability_ref": "shell.execute", "required": True}]
     value["policy"]["allowed_capabilities"].append("shell.execute")
 
+    permissive_for_test = {
+        "bounded-coding": {
+            "approval_required": True,
+            "allowed_capabilities": [
+                "repository.read",
+                "verification.run",
+                "optional.search",
+                "shell.execute",
+            ],
+            "denied_capabilities": ["credential.read"],
+        }
+    }
     with pytest.raises(
         WorkerConfigurationError, match="required capabilities are unavailable"
     ):
-        validate(value)
+        validate(value, policies=permissive_for_test)
 
 
 def test_optional_unavailable_tool_is_not_required_for_activation() -> None:
@@ -155,3 +179,30 @@ def test_input_mapping_is_not_mutated() -> None:
     validate(value)
 
     assert value == original
+
+
+def test_unknown_policy_reference_is_rejected() -> None:
+    value = config()
+    value["policy"]["policy_ref"] = "unregistered"
+
+    with pytest.raises(
+        WorkerConfigurationError, match="unknown or unauthorized policy"
+    ):
+        validate(value)
+
+
+def test_configuration_cannot_weaken_registered_approval_requirement() -> None:
+    value = config()
+    value["policy"]["approval_required"] = False
+
+    result = validate(value)
+
+    assert result.approval_required is True
+
+
+def test_configuration_cannot_widen_registered_capabilities() -> None:
+    value = config()
+    value["policy"]["allowed_capabilities"].append("shell.execute")
+
+    with pytest.raises(WorkerConfigurationError, match="does not allow"):
+        validate(value)

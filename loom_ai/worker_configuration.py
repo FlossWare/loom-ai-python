@@ -47,12 +47,14 @@ def validate_worker_configuration(
     *,
     gateway_selections: Mapping[str, set[str] | frozenset[str]],
     available_capabilities: set[str] | frozenset[str],
+    policy_registry: Mapping[str, Mapping[str, Any]],
 ) -> ValidatedWorkerConfiguration:
     """Validate config structure and preflight gateway/capability authorization.
 
     The supplied registries are the runtime's trusted view of configured model
-    gateways, model-selection profiles, and authorized capabilities. Unknown
-    references fail closed before a Worker can be activated.
+    gateways, model-selection profiles, authorized capabilities, and policies.
+    The policy registry passed to this call must contain only policies this
+    Worker is authorized to select. Unknown references fail closed.
     """
     if not isinstance(value, Mapping):
         raise WorkerConfigurationError("configuration must be an object")
@@ -161,19 +163,69 @@ def validate_worker_configuration(
             "policy requires policy_ref and approval_required"
         )
     policy_ref = _nonempty_string(policy["policy_ref"], "policy.policy_ref")
-    approval_required = policy["approval_required"]
-    if not isinstance(approval_required, bool):
+    configured_approval = policy["approval_required"]
+    if not isinstance(configured_approval, bool):
         raise WorkerConfigurationError("policy.approval_required must be a boolean")
-    allowed = (
+    if policy_ref not in policy_registry:
+        raise WorkerConfigurationError(
+            f"unknown or unauthorized policy reference: {policy_ref}"
+        )
+    trusted_policy = policy_registry[policy_ref]
+    if not isinstance(trusted_policy, Mapping):
+        raise WorkerConfigurationError(
+            f"registered policy {policy_ref} must be an object"
+        )
+    _keys(
+        trusted_policy,
+        {"approval_required", "allowed_capabilities", "denied_capabilities"},
+        f"policy_registry[{policy_ref}]",
+    )
+    if "approval_required" not in trusted_policy:
+        raise WorkerConfigurationError(
+            f"registered policy {policy_ref} requires approval_required"
+        )
+    trusted_approval = trusted_policy["approval_required"]
+    if not isinstance(trusted_approval, bool):
+        raise WorkerConfigurationError(
+            f"registered policy {policy_ref} approval_required must be a boolean"
+        )
+    configured_allowed = (
         set(_string_list(policy["allowed_capabilities"], "policy.allowed_capabilities"))
         if "allowed_capabilities" in policy
         else None
     )
+    trusted_allowed = (
+        set(
+            _string_list(
+                trusted_policy["allowed_capabilities"],
+                f"policy_registry[{policy_ref}].allowed_capabilities",
+            )
+        )
+        if "allowed_capabilities" in trusted_policy
+        else None
+    )
+    if configured_allowed is not None and trusted_allowed is not None:
+        widened = configured_allowed - trusted_allowed
+        if widened:
+            raise WorkerConfigurationError(
+                "policy does not allow configured capabilities: "
+                + ", ".join(sorted(widened))
+            )
+        allowed = configured_allowed & trusted_allowed
+    else:
+        allowed = configured_allowed if trusted_allowed is None else trusted_allowed
     denied = set(
         _string_list(
             policy.get("denied_capabilities", []), "policy.denied_capabilities"
         )
     )
+    denied.update(
+        _string_list(
+            trusted_policy.get("denied_capabilities", []),
+            f"policy_registry[{policy_ref}].denied_capabilities",
+        )
+    )
+    approval_required = configured_approval or trusted_approval
 
     declared_set = set(declared)
     all_referenced = declared_set | tool_capabilities
