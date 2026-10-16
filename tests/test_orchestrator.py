@@ -16,6 +16,7 @@ from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
     CancellationResult,
     ExecutionAlreadyExistsError,
+    ExecutionNotResumableError,
     Orchestrator,
     OrchestratorSubmission,
 )
@@ -42,7 +43,12 @@ class FixedWorker:
 
 
 def build_arbiter(worker: FixedWorker) -> Arbiter:
-    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+    def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
+        if result.successful and context.state.get("phase") == "initial":
+            return WorkerEvaluation(
+                ArbiterDecision.INTERRUPT,
+                reason="initial phase complete; awaiting continuation",
+            )
         return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
     return Arbiter([worker], evaluate, max_retries=0)
@@ -121,6 +127,34 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert phases == ["initial", "continued"]
 
 
+def test_terminal_execution_cannot_be_continued(tmp_path) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+
+    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
+
+    orchestrator = Orchestrator(
+        Arbiter([worker], evaluate, max_retries=0),
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    orchestrator.submit(
+        Intent(goal="complete once"),
+        execution_id="terminal-execution",
+    )
+    before = orchestrator.observe("terminal-execution")
+
+    assert before.terminal
+    with pytest.raises(
+        ExecutionNotResumableError,
+        match="execution is not resumable: terminal-execution",
+    ):
+        orchestrator.continue_execution("terminal-execution")
+
+    after = orchestrator.observe("terminal-execution")
+    assert after == before
+    assert len(worker.contexts) == 1
+
+
 def test_continuation_preserves_state_metadata_and_prior_structured_result(
     tmp_path,
 ) -> None:
@@ -148,6 +182,7 @@ def test_continuation_preserves_state_metadata_and_prior_structured_result(
             status="success",
             metadata={"caller": "test"},
             result=prior_result,
+            lifecycle="interrupted",
         )
     )
     orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
