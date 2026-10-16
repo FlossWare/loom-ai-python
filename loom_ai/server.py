@@ -17,7 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
-from loom_ai.execution_state import ExecutionStateCorruptError
+from loom_ai.execution_state import ExecutionStateCorruptError, ExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import Orchestrator
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
@@ -39,7 +39,7 @@ class LoomServer:
         *,
         host: str = "127.0.0.1",
         port: int = 8000,
-        execution_store=None,
+        execution_store: ExecutionStateStore | None = None,
         orchestrator: Orchestrator | None = None,
     ) -> None:
         if orchestrator is not None and (arbiter is not None or execution_store is not None):
