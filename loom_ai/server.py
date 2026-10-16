@@ -42,7 +42,9 @@ class LoomServer:
         execution_store: ExecutionStateStore | None = None,
         orchestrator: Orchestrator | None = None,
     ) -> None:
-        if orchestrator is not None and (arbiter is not None or execution_store is not None):
+        if orchestrator is not None and (
+            arbiter is not None or execution_store is not None
+        ):
             raise ValueError("provide either orchestrator or arbiter/execution_store")
         if orchestrator is None:
             if arbiter is None:
