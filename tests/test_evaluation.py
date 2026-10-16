@@ -124,6 +124,25 @@ def test_evaluation_rejects_wrong_execution_identity(tmp_path) -> None:
         )
 
 
+def test_continuation_invalidates_current_evaluation_but_keeps_history(
+    tmp_path,
+) -> None:
+    orchestrator = build_orchestrator(tmp_path)
+    orchestrator.submit(Intent(goal="evaluate then continue"), execution_id="continued")
+    orchestrator.record_evaluation(
+        "continued",
+        EvaluationRecord(status=EvaluationStatus.MET, criteria=("artifact exists",)),
+    )
+
+    orchestrator.continue_execution("continued")
+    observed = orchestrator.observe("continued")
+
+    assert observed.lifecycle == "completed"
+    assert observed.evaluation.status is EvaluationStatus.NOT_EVALUATED
+    assert len(observed.evaluations) == 1
+    assert observed.evaluations[0].status is EvaluationStatus.MET
+
+
 def test_evaluation_rejects_a_reference_to_another_result(tmp_path) -> None:
     orchestrator = build_orchestrator(tmp_path)
     orchestrator.submit(Intent(goal="result identity check"), execution_id="result-bound")
