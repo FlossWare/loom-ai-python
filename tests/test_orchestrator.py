@@ -42,7 +42,9 @@ class RaisingWorker:
         raise ValueError("private implementation detail")
 
 
-def complete(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+def complete(
+    result: WorkerResult, _context: WorkerContext
+) -> WorkerEvaluation:
     return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
 
@@ -84,7 +86,7 @@ def test_continue_preserves_execution_identity_and_phase_history(tmp_path: Path)
     state = orchestrator.observe("execution-456")
 
     assert initial.execution_id == continued.execution_id == "execution-456"
-    assert continued.result.output == {"phase": "continued"}
+    assert continued.result.output[0].output == {"phase": "continued"}
     assert state.status == "success"
     assert state.state["phase"] == "continued"
     phases = [
