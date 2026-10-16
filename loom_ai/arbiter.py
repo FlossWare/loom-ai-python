@@ -80,7 +80,10 @@ class Arbiter:
                 return self._result(outputs, evidence, "complete", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.RETRY:
-                if attempts[worker.worker_id] > self.max_retries + 1:
+                # max_retries counts retries after the initial attempt. Once
+                # this attempt reaches that limit, do not execute the worker
+                # one extra time merely to discover that another retry is denied.
+                if attempts[worker.worker_id] >= self.max_retries + 1:
                     return self._result(
                         outputs, evidence, "failed", "retry limit exceeded"
                     )
