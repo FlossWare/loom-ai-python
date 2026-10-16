@@ -249,3 +249,86 @@ def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
     assert cancelled["payload"] == {"reason": "stop now"}
     assert evaluation["path"] == "/executions/execution%2Fwith%20spaces/evaluations"
     assert evaluation["payload"] == {"status": "met", "criteria": ["complete"]}
+
+
+def test_mcp_can_continue_execution_after_http_server_restart() -> None:
+    with TemporaryDirectory() as state_dir:
+
+        def build_server() -> LoomServer:
+            def evaluate(
+                _result: WorkerResult, _context: WorkerContext
+            ) -> WorkerEvaluation:
+                return WorkerEvaluation(
+                    ArbiterDecision.COMPLETE,
+                    reason="restart recovery",
+                )
+
+            return LoomServer(
+                Arbiter([RecordingWorker()], evaluate),
+                host="127.0.0.1",
+                port=0,
+                execution_store=FileExecutionStateStore(state_dir),
+            )
+
+        def start_server(server: LoomServer) -> Thread:
+            http_server = server.start()
+            thread = Thread(target=http_server.serve_forever, daemon=True)
+            thread.start()
+            return thread
+
+        first_server = build_server()
+        first_thread = start_server(first_server)
+        execution_id = ""
+
+        async def submit() -> str:
+            mcp_process = StdioServerParameters(
+                command=sys.executable,
+                args=["scripts/loom_mcp_server.py"],
+                env={"LOOM_URL": f"http://127.0.0.1:{first_server.port}"},
+            )
+            async with Client(mcp_process) as client:
+                submitted = await client.call_tool(
+                    "loom_submit_intent",
+                    {"goal": "survive an HTTP server restart"},
+                )
+                payload = json.loads(submitted.content[0].text)
+                return payload["execution_id"]
+
+        try:
+            execution_id = asyncio.run(submit())
+            assert execution_id
+        finally:
+            first_server.close()
+            first_thread.join(timeout=2)
+
+        second_server = build_server()
+        second_thread = start_server(second_server)
+
+        async def observe_and_continue() -> None:
+            mcp_process = StdioServerParameters(
+                command=sys.executable,
+                args=["scripts/loom_mcp_server.py"],
+                env={"LOOM_URL": f"http://127.0.0.1:{second_server.port}"},
+            )
+            async with Client(mcp_process) as client:
+                observed = await client.call_tool(
+                    "loom_get_execution",
+                    {"execution_id": execution_id},
+                )
+                observed_payload = json.loads(observed.content[0].text)
+                assert observed_payload["execution_id"] == execution_id
+                assert observed_payload["status"] == "success"
+
+                continued = await client.call_tool(
+                    "loom_continue_execution",
+                    {"execution_id": execution_id},
+                )
+                continued_payload = json.loads(continued.content[0].text)
+                assert continued_payload["execution_id"] == execution_id
+                assert continued_payload["status"] == "success"
+
+        try:
+            asyncio.run(observe_and_continue())
+        finally:
+            second_server.close()
+            second_thread.join(timeout=2)
