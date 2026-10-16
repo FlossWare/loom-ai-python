@@ -43,7 +43,7 @@ def config() -> dict:
             "max_duration_seconds": 900,
             "max_output_bytes": 200000,
         },
-        "metadata": {"team": "engineering"},
+        "metadata": {"team": "engineering", "nested": {"items": ["keep"]}},
     }
 
 
@@ -205,4 +205,23 @@ def test_configuration_cannot_widen_registered_capabilities() -> None:
     value["policy"]["allowed_capabilities"].append("shell.execute")
 
     with pytest.raises(WorkerConfigurationError, match="does not allow"):
+        validate(value)
+
+
+
+def test_validated_metadata_is_deeply_immutable() -> None:
+    result = validate(config())
+
+    assert result.metadata["nested"]["items"] == ("keep",)
+    with pytest.raises(TypeError):
+        result.metadata["nested"]["new"] = "value"
+    with pytest.raises(TypeError):
+        result.metadata["nested"]["items"][0] = "changed"
+
+
+def test_non_finite_metadata_numbers_are_rejected() -> None:
+    value = config()
+    value["metadata"] = {"cost": float("nan")}
+
+    with pytest.raises(WorkerConfigurationError, match="finite JSON number"):
         validate(value)
