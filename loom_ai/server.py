@@ -189,10 +189,19 @@ class LoomServer:
                         .strip("/")
                     )
                     execution_id = unquote(execution_id)
-                    if not execution_id or not owner.orchestrator.durable_enabled:
+                    if not execution_id:
                         self._send(
                             HTTPStatus.NOT_FOUND,
                             _error_payload("route.not_found", "not found"),
+                        )
+                        return
+                    if not owner.orchestrator.durable_enabled:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.durability_unavailable",
+                                "durable execution state is not configured",
+                            ),
                         )
                         return
                     try:
@@ -406,7 +415,10 @@ class LoomServer:
                     return
 
                 if request_path != "/intents":
-                    self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    self._send(
+                        HTTPStatus.NOT_FOUND,
+                        _error_payload("route.not_found", "not found"),
+                    )
                     return
 
                 try:
