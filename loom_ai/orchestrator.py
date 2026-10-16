@@ -7,9 +7,11 @@ one application-facing authority.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
+from enum import Enum
 from threading import RLock
+from typing import Any, Mapping
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter
@@ -392,9 +394,12 @@ class Orchestrator:
             store.save(replace(execution, status="running", metadata=metadata))
             self._active[execution_id] = token
 
+        context_state = dict(execution.state)
+        if execution.result is not None:
+            context_state["last_execution_result"] = execution.result
         context = WorkerContext(
             intent=execution.intent,
-            state=execution.state,
+            state=context_state,
             evidence=execution.evidence,
             metadata=execution.metadata,
             deadline=deadline,
@@ -638,18 +643,54 @@ def _state_from_result(
     termination_cause = result.metadata.get("termination_cause")
     if termination_cause is not None:
         metadata["termination_cause"] = termination_cause
-    return ExecutionState(
-        execution_id=execution_id,
-        intent=intent,
-        state={
+    state = dict(prior.state) if prior is not None else {}
+    state.update(
+        {
             "last_worker": result.worker_id,
             "last_status": result.status.value,
             "phase": phase,
-        },
+        }
+    )
+    return ExecutionState(
+        execution_id=execution_id,
+        intent=intent,
+        state=state,
         evidence=evidence,
         status=status,
         metadata=metadata,
+        result=_result_to_dict(result),
     )
+
+
+def _result_to_dict(result: WorkerResult) -> dict[str, Any]:
+    """Convert a structured Worker Result into a durable JSON representation."""
+    return {
+        "worker_id": result.worker_id,
+        "status": result.status.value,
+        "output": _json_value(result.output),
+        "evidence": _json_value(result.evidence),
+        "error": result.error,
+        "metadata": _json_value(result.metadata),
+    }
+
+
+def _json_value(value: Any) -> Any:
+    """Convert contract values to JSON data without stringifying unknown objects."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Enum):
+        return value.value
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _json_value(getattr(value, item.name)) for item in fields(value)
+        }
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise TypeError("durable result mapping keys must be strings")
+        return {key: _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    raise TypeError(f"unsupported durable result value: {type(value).__name__}")
 
 
 def _exception_result(exc: Exception, *, phase: str) -> WorkerResult:
