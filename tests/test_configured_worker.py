@@ -153,3 +153,20 @@ def test_duration_budget_rejects_slow_synchronous_provider_result(monkeypatch) -
 def test_model_request_rejects_invalid_timeout(timeout) -> None:
     with pytest.raises(ValueError, match="timeout_seconds"):
         ModelRequest(prompt="test", timeout_seconds=timeout)
+
+
+def test_retry_provider_timeout_uses_remaining_budget(monkeypatch) -> None:
+    import loom_ai.configured_worker as configured_worker_module
+
+    clock = iter([0.0, 0.0, 3.0, 3.0, 4.0])
+    monkeypatch.setattr(configured_worker_module, "monotonic", lambda: next(clock))
+    provider = RecordingProvider([RuntimeError("temporary"), "recovered"])
+    worker = activate_model_worker(
+        validated(),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="retry safely")))
+
+    assert result.status is WorkerStatus.SUCCESS
+    assert [request.timeout_seconds for request in provider.requests] == [5.0, 2.0]
