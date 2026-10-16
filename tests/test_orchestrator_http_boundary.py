@@ -1,0 +1,109 @@
+"""Contract tests proving HTTP delegates lifecycle work to Orchestrator."""
+
+from __future__ import annotations
+
+import json
+import socketserver
+from threading import Thread
+from urllib.request import Request, urlopen
+
+from loom_ai.execution_state import ExecutionState
+from loom_ai.intent import Intent
+from loom_ai.orchestrator import OrchestratorSubmission
+from loom_ai.server import LoomServer
+from loom_ai.worker import WorkerResult, WorkerStatus
+
+
+class _HTTPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+class RecordingOrchestrator:
+    durable_enabled = True
+    execution_store = None
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def submit(
+        self, intent: Intent, *, execution_id: str | None = None
+    ) -> OrchestratorSubmission:
+        self.calls.append(("submit", intent.goal))
+        return OrchestratorSubmission(
+            execution_id or "orchestrator-created-id",
+            WorkerResult(
+                worker_id="application-worker",
+                status=WorkerStatus.SUCCESS,
+                output={"delegated": True},
+            ),
+        )
+
+    def observe(self, execution_id: str) -> ExecutionState:
+        self.calls.append(("observe", execution_id))
+        return ExecutionState(
+            execution_id=execution_id,
+            intent=Intent(goal="observed task"),
+            state={"phase": "initial"},
+            evidence=({"type": "execution-phase", "phase": "initial"},),
+            status="success",
+        )
+
+    def continue_execution(self, execution_id: str) -> OrchestratorSubmission:
+        self.calls.append(("continue", execution_id))
+        return OrchestratorSubmission(
+            execution_id,
+            WorkerResult(
+                worker_id="application-worker",
+                status=WorkerStatus.SUCCESS,
+                output={"continued": True},
+            ),
+        )
+
+
+def test_http_routes_delegate_submit_observe_and_continue_to_orchestrator() -> None:
+    orchestrator = RecordingOrchestrator()
+    server = LoomServer(orchestrator=orchestrator, port=0)
+    instance = _HTTPServer((server.host, server.port), server._handler_factory())
+    thread = Thread(target=instance.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://{server.host}:{instance.server_address[1]}"
+        request = Request(
+            f"{base}/intents",
+            data=json.dumps({"goal": "use the application boundary"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request) as response:
+            submitted = json.load(response)
+
+        execution_id = submitted["execution_id"]
+        assert execution_id == "orchestrator-created-id"
+        assert submitted["output"] == {"delegated": True}
+
+        with urlopen(f"{base}/executions/{execution_id}") as response:
+            observed = json.load(response)
+        assert observed["execution_id"] == execution_id
+        assert observed["state"]["phase"] == "initial"
+
+        continue_request = Request(
+            f"{base}/executions/{execution_id}/continue",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(continue_request) as response:
+            continued = json.load(response)
+        assert continued["execution_id"] == execution_id
+        assert continued["output"] == {"continued": True}
+
+        assert orchestrator.calls == [
+            ("submit", "use the application boundary"),
+            ("observe", execution_id),
+            ("continue", execution_id),
+        ]
+    finally:
+        instance.shutdown()
+        instance.server_close()
+        thread.join(timeout=2)
