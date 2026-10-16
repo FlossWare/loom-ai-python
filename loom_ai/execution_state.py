@@ -156,7 +156,7 @@ class FileExecutionStateStore:
 
 def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
     return {
-        "representation_version": execution.representation_version,
+        "representation_version": EXECUTION_STATE_VERSION,
         "execution_id": execution.execution_id,
         "intent": {
             "title": execution.intent.title,
