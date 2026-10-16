@@ -51,7 +51,7 @@ def test_repository_worker_applies_initial_and_post_restart_changes(
     context = WorkerContext(intent=Intent(goal="apply bounded change"))
 
     initial = worker.execute(context)
-    continued = worker.execute(context.with_state(phase="initial"))
+    continued = worker.execute(context.with_state(phase="continued"))
 
     assert initial.status is WorkerStatus.SUCCESS
     assert initial.output == {"phase": "initial", "changed": True}
