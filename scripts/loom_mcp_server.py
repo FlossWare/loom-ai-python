@@ -47,6 +47,10 @@ class LoomHTTPClient:
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"Loom HTTP {exc.code}: {detail}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"Loom HTTP request timed out after {self.timeout} seconds"
+            ) from exc
         except URLError as exc:
             raise RuntimeError(f"Loom HTTP connection failed: {exc.reason}") from exc
 
