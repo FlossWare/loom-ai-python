@@ -34,6 +34,12 @@ class RecordingWorker:
         )
 
 
+class NestedMutatingWorker(RecordingWorker):
+    def execute(self, context: WorkerContext) -> WorkerResult:
+        context.state["files"]["src/example.py"] = "mutated by first worker"
+        return super().execute(context)
+
+
 def select_first(
     results: tuple[WorkerResult, ...], _context: WorkerContext
 ) -> StageEvaluation:
@@ -57,6 +63,24 @@ def test_stage_workers_receive_the_same_logical_input() -> None:
     assert second.contexts[0].intent is intent
     assert dict(first.contexts[0].state) == dict(second.contexts[0].state)
     assert first.contexts[0].state is not second.contexts[0].state
+
+
+def test_nested_mutation_by_one_worker_does_not_change_sibling_input() -> None:
+    context = WorkerContext(
+        intent=Intent(goal="isolate workspace snapshots"),
+        state={"files": {"src/example.py": "original"}},
+    )
+    first = NestedMutatingWorker("mutator")
+    second = RecordingWorker("observer")
+    stage = ArbitrationStage("review", (first, second), select_first)
+
+    SequentialArbitrationPipeline((stage,)).execute(context)
+
+    assert first.contexts[0].state["files"]["src/example.py"] == (
+        "mutated by first worker"
+    )
+    assert second.contexts[0].state["files"]["src/example.py"] == "original"
+    assert context.state["files"]["src/example.py"] == "original"
 
 
 def test_arbiter_receives_all_worker_results_and_selects_a_real_result() -> None:
