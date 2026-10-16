@@ -208,6 +208,11 @@ class LoomServer:
 
                     payload = json.loads(self.rfile.read(length).decode("utf-8"))
                     intent, requested_execution_id = _parse_intent(payload)
+                    if (
+                        owner.orchestrator.durable_enabled
+                        and requested_execution_id is None
+                    ):
+                        requested_execution_id = str(uuid4())
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                     return
@@ -218,7 +223,13 @@ class LoomServer:
                         execution_id=requested_execution_id,
                     )
                 except Exception as exc:  # pragma: no cover
-                    self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+                    error_payload = {"error": str(exc)}
+                    if (
+                        owner.orchestrator.durable_enabled
+                        and requested_execution_id is not None
+                    ):
+                        error_payload["execution_id"] = requested_execution_id
+                    self._send(HTTPStatus.INTERNAL_SERVER_ERROR, error_payload)
                     return
 
                 response = _result_payload(submission.result)
