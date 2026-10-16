@@ -487,10 +487,15 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
         "error": result.error,
         "metadata": result.metadata,
     }
+    lifecycle = (
+        "interrupted"
+        if result.metadata.get("continuation_pending") is True
+        else "completed"
+    )
     return {
         **structured_result,
         "status": result.status.value,
-        "lifecycle": "completed",
+        "lifecycle": lifecycle,
         "evaluation": EvaluationRecord().to_dict(),
         "result": structured_result,
     }
