@@ -595,10 +595,25 @@ def _state_from_result(
     if deadline is not None:
         metadata["deadline"] = deadline.isoformat()
     if cancellation is not None:
-        metadata["cancellation"] = {
-            **cancellation,
-            "pending": result.status is not WorkerStatus.CANCELLED,
-        }
+        previous_cancellation = metadata.get("cancellation")
+        cancellation_metadata = (
+            dict(previous_cancellation)
+            if isinstance(previous_cancellation, dict)
+            else {}
+        )
+        cancellation_metadata.update(cancellation)
+        cancellation_metadata["pending"] = result.status is not WorkerStatus.CANCELLED
+        if result.status is WorkerStatus.CANCELLED:
+            cancellation_metadata.setdefault(
+                "confirmed_at", datetime.now(timezone.utc).isoformat()
+            )
+            evidence += (
+                {
+                    "type": "cancellation-confirmed",
+                    "confirmed_at": cancellation_metadata["confirmed_at"],
+                },
+            )
+        metadata["cancellation"] = cancellation_metadata
     termination_cause = result.metadata.get("termination_cause")
     if termination_cause is not None:
         metadata["termination_cause"] = termination_cause
