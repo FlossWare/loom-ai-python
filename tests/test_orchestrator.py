@@ -306,6 +306,51 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         thread.join(timeout=2)
 
 
+def test_http_duplicate_execution_id_returns_conflict_without_rerunning(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    server = LoomServer(
+        build_arbiter(worker),
+        port=0,
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    instance = server.start()
+    thread = Thread(target=instance.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://{server.host}:{server.port}/intents"
+    payload = json.dumps(
+        {"goal": "execute once", "execution_id": "http-stable-execution"}
+    ).encode()
+    try:
+        request = Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request) as response:
+            first = json.load(response)
+        assert first["execution_id"] == "http-stable-execution"
+
+        duplicate = Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as captured:
+            urlopen(duplicate)
+        assert captured.value.code == 409
+        conflict = json.load(captured.value)
+        assert conflict["execution_id"] == "http-stable-execution"
+        assert "execution already exists" in conflict["error"]
+        assert len(worker.contexts) == 1
+    finally:
+        server.close()
+        thread.join(timeout=2)
+
+
 class RaisingWorker:
     worker_id = "raising-worker"
 
