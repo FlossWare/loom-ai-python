@@ -217,14 +217,74 @@ class Orchestrator:
 
             prior_request = execution.metadata.get("cancellation")
             token = self._active.get(execution_id)
+            deadline = parse_deadline(execution.metadata.get("deadline"))
+            prior_requested_at = None
+            if isinstance(prior_request, dict) and prior_request.get("requested_at"):
+                prior_requested_at = parse_deadline(prior_request["requested_at"])
+            deadline_wins = (
+                deadline is not None
+                and _is_expired(deadline)
+                and (
+                    prior_requested_at is None
+                    or prior_requested_at >= deadline
+                )
+            )
+            if deadline_wins:
+                if token is not None:
+                    token.cancel("deadline exceeded")
+                    metadata = dict(execution.metadata)
+                    metadata["termination_cause"] = "deadline_exceeded"
+                    evidence = execution.evidence + (
+                        {"type": "deadline-exceeded", "deadline": deadline.isoformat()},
+                    )
+                    updated = replace(
+                        execution,
+                        evidence=evidence,
+                        metadata=metadata,
+                    )
+                    store.save(updated)
+                    return CancellationResult(updated, accepted=False, pending=True)
+                result = _deadline_result()
+                updated = _state_from_result(
+                    execution_id,
+                    execution.intent,
+                    result,
+                    phase=str(execution.metadata.get("phase", "initial")),
+                    prior=execution,
+                    deadline=deadline,
+                )
+                store.save(updated)
+                return CancellationResult(updated, accepted=False, pending=False)
+
             if isinstance(prior_request, dict) and prior_request.get("requested"):
                 if token is not None:
                     token.cancel(str(prior_request.get("reason") or reason))
-                return CancellationResult(
-                    execution,
-                    accepted=False,
-                    pending=token is not None,
+                    return CancellationResult(
+                        execution,
+                        accepted=False,
+                        pending=True,
+                    )
+                confirmed_at = datetime.now(timezone.utc).isoformat()
+                evidence = execution.evidence + (
+                    {"type": "cancellation-confirmed", "confirmed_at": confirmed_at},
                 )
+                state = dict(execution.state)
+                state["last_status"] = WorkerStatus.CANCELLED.value
+                metadata = dict(execution.metadata)
+                metadata["cancellation"] = {
+                    **prior_request,
+                    "pending": False,
+                    "confirmed_at": confirmed_at,
+                }
+                updated = replace(
+                    execution,
+                    state=state,
+                    evidence=evidence,
+                    status="cancelled",
+                    metadata=metadata,
+                )
+                store.save(updated)
+                return CancellationResult(updated, accepted=False, pending=False)
 
             requested_at = datetime.now(timezone.utc).isoformat()
             cancellation = {
