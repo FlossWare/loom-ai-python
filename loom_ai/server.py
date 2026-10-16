@@ -469,13 +469,11 @@ class LoomServer:
                 except ExecutionAlreadyExistsError as exc:
                     self._send(
                         HTTPStatus.CONFLICT,
-                        {
-                            **_error_payload(
-                                "execution.identity_conflict",
-                                str(exc),
-                                execution_id=requested_execution_id,
-                            ),
-                        },
+                        _error_payload(
+                            "execution.identity_conflict",
+                            str(exc),
+                            execution_id=requested_execution_id,
+                        ),
                     )
                     return
                 except Exception as exc:  # pragma: no cover
