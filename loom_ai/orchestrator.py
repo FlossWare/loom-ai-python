@@ -13,7 +13,6 @@ from uuid import uuid4
 from loom_ai.arbiter import Arbiter
 from loom_ai.execution_state import (
     ExecutionState,
-    ExecutionStateCorruptError,
     ExecutionStateStore,
 )
 from loom_ai.intent import Intent
