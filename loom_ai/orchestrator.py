@@ -120,11 +120,12 @@ class Orchestrator:
             result = self._execute_with_controls(intent, absolute_deadline, token)
         except Exception as exc:
             with self._lock:
-                if token.requested:
+                control_cause = _control_cause(token, absolute_deadline)
+                if control_cause == "cancelled":
                     result = _cancelled_result(
                         _exception_result(exc, phase="initial"), token
                     )
-                elif absolute_deadline is not None and _is_expired(absolute_deadline):
+                elif control_cause == "deadline_exceeded":
                     result = _deadline_result(
                         evidence=(
                             {
@@ -165,16 +166,17 @@ class Orchestrator:
                 return OrchestratorSubmission(actual_id, result)
 
         with self._lock:
-            if token.requested and result.status is not WorkerStatus.CANCELLED:
+            control_cause = _control_cause(token, absolute_deadline)
+            if control_cause == "cancelled" and result.status is not WorkerStatus.CANCELLED:
                 result = _cancelled_result(result, token)
-            elif absolute_deadline is not None and _is_expired(absolute_deadline):
+            elif control_cause == "deadline_exceeded":
                 result = _deadline_result(
                     evidence=result.evidence,
                     output=result.output,
                 )
             cancellation = (
                 {"requested": True, "reason": token.reason}
-                if token.requested
+                if control_cause == "cancelled"
                 else None
             )
             self.execution_store.save(
@@ -337,11 +339,12 @@ class Orchestrator:
             result = self.arbiter.execute(context)
         except Exception as exc:
             with self._lock:
-                if token.requested:
+                control_cause = _control_cause(token, deadline)
+                if control_cause == "cancelled":
                     result = _cancelled_result(
                         _exception_result(exc, phase="continued"), token
                     )
-                elif deadline is not None and _is_expired(deadline):
+                elif control_cause == "deadline_exceeded":
                     result = _deadline_result(
                         evidence=(
                             {
@@ -384,9 +387,10 @@ class Orchestrator:
                 return OrchestratorSubmission(execution_id, result)
 
         with self._lock:
-            if token.requested and result.status is not WorkerStatus.CANCELLED:
+            control_cause = _control_cause(token, deadline)
+            if control_cause == "cancelled" and result.status is not WorkerStatus.CANCELLED:
                 result = _cancelled_result(result, token)
-            elif deadline is not None and _is_expired(deadline):
+            elif control_cause == "deadline_exceeded":
                 result = _deadline_result(evidence=result.evidence, output=result.output)
             store.save(
                 _state_from_result(
@@ -398,7 +402,7 @@ class Orchestrator:
                     deadline=deadline,
                     cancellation=(
                         {"requested": True, "reason": token.reason}
-                        if token.requested
+                        if control_cause == "cancelled"
                         else None
                     ),
                 )
@@ -445,6 +449,22 @@ def parse_deadline(value: datetime | str | None) -> datetime | None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("deadline must include an explicit UTC offset")
     return value.astimezone(timezone.utc)
+
+
+def _control_cause(
+    token: CancellationToken,
+    deadline: datetime | None,
+) -> str | None:
+    """Resolve concurrent controls by the first recorded termination instant."""
+    requested_at = token.requested_at
+    if deadline is not None and _is_expired(deadline):
+        if requested_at is None or requested_at >= deadline:
+            return "deadline_exceeded"
+    if token.requested:
+        return "cancelled"
+    if deadline is not None and _is_expired(deadline):
+        return "deadline_exceeded"
+    return None
 
 
 def _is_expired(deadline: datetime) -> bool:
