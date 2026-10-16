@@ -54,6 +54,24 @@ def build_arbiter(worker: FixedWorker) -> Arbiter:
     return Arbiter([worker], evaluate, max_retries=0)
 
 
+def test_non_durable_execution_cannot_report_resumable_interrupt_as_success() -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    orchestrator = Orchestrator(build_arbiter(worker))
+
+    submission = orchestrator.submit(Intent(goal="interrupt without durable storage"))
+
+    assert submission.execution_id is None
+    assert submission.result.status is WorkerStatus.FAILED
+    assert submission.result.metadata["termination_cause"] == "durable_state_unavailable"
+    assert submission.result.error == (
+        "execution interrupted but durable state is not configured"
+    )
+    assert any(
+        item.get("type") == "interruption-unavailable"
+        for item in submission.result.evidence
+    )
+
+
 def test_orchestrator_persists_cancellation_as_distinct_terminal_status(
     tmp_path,
 ) -> None:
