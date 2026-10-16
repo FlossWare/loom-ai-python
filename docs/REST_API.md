@@ -16,7 +16,7 @@ representation change ahead of that decision.
 | `GET /health` | Check transport availability | `200 application/json`, `{"status":"ok"}` |
 | `POST /intents` | Submit and execute an Intent | `200 application/json` with Worker Result fields; includes `execution_id` when a durable store is configured |
 | `GET /executions/{execution_id}` | Read durable execution state | `200 application/json` with execution identity, Intent identity, lifecycle/status, result, evidence, evaluation history, metadata, representation version, and provenance |
-| `POST /executions/{execution_id}/continue` | Continue a durable execution | `200 application/json` with the stable `execution_id` and Worker Result fields |
+| `POST /executions/{execution_id}/continue` | Resume an interrupted durable execution | `200 application/json` with the stable `execution_id` and Worker Result fields |
 | `POST /executions/{execution_id}/cancel` | Request cooperative cancellation | `200 application/json` with execution state and explicit `cancellation_accepted` / `cancellation_pending` flags |
 | `POST /executions/{execution_id}/evaluations` | Append an evaluation of a durable execution result | `200 application/json` with the updated execution representation and evaluation history |
 
@@ -79,6 +79,12 @@ Legacy `status` describes the prior Worker outcome and is not proof that the tas
 acceptance criteria were met. A completed execution defaults to `not_evaluated`
 until an explicit evaluation is recorded.
 
+Continuation is permitted only when the persisted lifecycle is
+`interrupted`. A successful intermediate phase that requires external work
+must explicitly interrupt the execution before returning control to the client.
+A terminal execution is immutable; attempting to continue it returns
+`409 Conflict` without invoking Workers or rewriting its Result.
+
 Cancellation responses include `cancellation_accepted` and
 `cancellation_pending`; these are separate because a cancellation request can be
 accepted before active work has actually terminated.
@@ -99,6 +105,7 @@ media-type contract version.
 | Request body larger than 10 MiB | 413 |
 | Unknown route, unknown execution, or durable route used without a store | 404 |
 | Intent submission reuses an existing durable execution identity | 409 |
+| Continuation is requested for a terminal or non-interrupted execution | 409 |
 | Corrupt durable execution state or unexpected server-side failure | 500 |
 
 The current API uses unversioned resource paths (`/intents` and
