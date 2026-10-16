@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -34,13 +35,34 @@ def build_state(*, status: str = "interrupted") -> ExecutionState:
 def test_file_store_round_trips_execution_state(tmp_path) -> None:
     store = FileExecutionStateStore(tmp_path)
 
-    store.save(build_state())
+    expected = replace(
+        build_state(),
+        result={
+            "worker_id": "pipeline",
+            "status": "success",
+            "output": {
+                "selected_result": {
+                    "worker_id": "reviewer",
+                    "status": "success",
+                    "output": {"decision": "accept"},
+                }
+            },
+            "evidence": [{"source": "reviewer"}],
+            "error": "",
+            "metadata": {"selected_worker_id": "reviewer"},
+        },
+    )
+    store.save(expected)
 
     restored = store.load("execution-1")
-    assert restored == build_state()
+    assert restored == expected
     assert restored is not None
     assert restored.intent.intent_id == "intent-1"
     assert restored.evidence == ({"worker": "inspect", "result": "complete"},)
+    assert restored.result is not None
+    assert restored.result["output"]["selected_result"]["output"] == {
+        "decision": "accept"
+    }
 
 
 def test_missing_execution_state_is_distinct_from_corruption(tmp_path) -> None:
