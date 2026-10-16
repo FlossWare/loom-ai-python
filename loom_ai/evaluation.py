@@ -50,7 +50,14 @@ class EvaluationRecord:
             self,
             execution_id=self.execution_id or execution_id,
             intent_id=self.intent_id or intent_id,
-            evaluated_at=self.evaluated_at or datetime.now(timezone.utc).isoformat(),
+            evaluated_at=(
+                self.evaluated_at
+                or (
+                    datetime.now(timezone.utc).isoformat()
+                    if self.status is not EvaluationStatus.NOT_EVALUATED
+                    else None
+                )
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
