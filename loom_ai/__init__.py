@@ -6,6 +6,7 @@ owned by FlossWare/loom.
 """
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.capability_runtime import CapabilityInvocationError, invoke_capability
 from loom_ai.configured_worker import (
     ConfiguredModelWorker,
     WorkerActivationError,
@@ -52,6 +53,7 @@ __all__ = [
     "Arbiter",
     "ArbiterDecision",
     "CancellationResult",
+    "CapabilityInvocationError",
     "CancellationToken",
     "ConfiguredModelWorker",
     "ArbitrationStage",
@@ -84,6 +86,7 @@ __all__ = [
     "WorkerResult",
     "WorkerStatus",
     "activate_model_worker",
+    "invoke_capability",
     "validate_worker_configuration",
 ]
 
