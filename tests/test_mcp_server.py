@@ -333,13 +333,17 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
                     "client": "mcp-restart-test",
                     "task_path": "tests/test_mcp_server.py",
                 }
-                assert observed_payload["result"]["worker_id"] == "mcp-test-worker"
-                assert observed_payload["result"]["output"] == {
+                assert observed_payload["result"]["worker_id"] == "arbiter"
+                assert observed_payload["result"]["output"][0]["worker_id"] == (
+                    "mcp-test-worker"
+                )
+                assert observed_payload["result"]["output"][0]["output"] == {
                     "goal": "survive an HTTP server restart"
                 }
-                assert observed_payload["result"]["evidence"] == [
+                assert observed_payload["result"]["output"][0]["evidence"] == [
                     {"source": "mcp-e2e"}
                 ]
+                assert {"source": "mcp-e2e"} in observed_payload["result"]["evidence"]
                 assert {"source": "mcp-e2e"} in observed_payload["evidence"]
 
                 continued = await client.call_tool(
