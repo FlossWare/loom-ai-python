@@ -1,8 +1,7 @@
-"""Minimal HTTP transport for the Loom execution substrate.
+"""HTTP transport adapter for the Loom Orchestrator application boundary.
 
-The server owns transport and request-to-Intent translation. Execution remains
-owned by the supplied Arbiter and its Workers. Provider/model access is
-deliberately not part of this module.
+This module owns HTTP parsing and response serialization only. Execution,
+durable lifecycle, and continuation are delegated to Orchestrator.
 """
 
 from __future__ import annotations
@@ -17,11 +16,8 @@ from typing import Any
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
-from loom_ai.execution_state import (
-    ExecutionState,
-    ExecutionStateCorruptError,
-    ExecutionStateStore,
-)
+from loom_ai.execution_state import ExecutionState, ExecutionStateError, ExecutionStateStore
+from loom_ai.orchestrator import Orchestrator
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
@@ -38,64 +34,51 @@ class LoomServer:
 
     def __init__(
         self,
-        arbiter: Arbiter,
+        arbiter: Arbiter | None = None,
         *,
         host: str = "127.0.0.1",
         port: int = 8000,
         execution_store: ExecutionStateStore | None = None,
+        orchestrator: Orchestrator | None = None,
     ) -> None:
+        if orchestrator is not None:
+            if arbiter is not None or execution_store is not None:
+                raise ValueError(
+                    "pass either orchestrator or arbiter/execution_store, not both"
+                )
+            self.orchestrator = orchestrator
+        else:
+            if arbiter is None:
+                raise ValueError("an Arbiter or Orchestrator is required")
+            self.orchestrator = Orchestrator(
+                arbiter,
+                execution_store=execution_store,
+            )
         self.host = host
         self.port = port
-        self.arbiter = arbiter
-        self.execution_store = execution_store
         self._server: _LoomHTTPServer | None = None
 
+    @property
+    def arbiter(self) -> Arbiter:
+        """Compatibility access to the Arbiter owned by Orchestrator."""
+        return self.orchestrator.arbiter
+
+    @property
+    def execution_store(self) -> ExecutionStateStore | None:
+        """Compatibility access to the store owned by Orchestrator."""
+        return self.orchestrator.execution_store
+
     def execute(self, intent: Intent) -> WorkerResult:
-        """Execute an Intent through the configured Arbiter."""
-        return self.arbiter.execute(WorkerContext(intent=intent))
+        """Compatibility wrapper; execution authority remains Orchestrator."""
+        return self.orchestrator.execute(intent)
 
     def execute_persisted(self, intent: Intent, execution_id: str) -> WorkerResult:
-        """Execute an Intent and persist its observable execution state."""
-        if self.execution_store is None:
-            raise RuntimeError("durable execution state is not configured")
-        self.execution_store.save(
-            ExecutionState(
-                execution_id=execution_id,
-                intent=intent,
-                status="running",
-                metadata={"phase": "initial"},
-            )
-        )
-        result = self.execute(intent)
-        self.execution_store.save(
-            _state_from_result(execution_id, intent, result, phase="initial")
-        )
-        return result
+        """Compatibility wrapper for a durable Orchestrator submission."""
+        return self.orchestrator.submit(intent, execution_id=execution_id).result
 
     def continue_execution(self, execution_id: str) -> WorkerResult:
-        """Continue an existing execution from durable state."""
-        if self.execution_store is None:
-            raise RuntimeError("durable execution state is not configured")
-        execution = self.execution_store.load(execution_id)
-        if execution is None:
-            raise KeyError(f"execution not found: {execution_id}")
-        context = WorkerContext(
-            intent=execution.intent,
-            state=execution.state,
-            evidence=execution.evidence,
-            metadata=execution.metadata,
-        )
-        result = self.arbiter.execute(context)
-        self.execution_store.save(
-            _state_from_result(
-                execution_id,
-                execution.intent,
-                result,
-                phase="continued",
-                prior=execution,
-            )
-        )
-        return result
+        """Compatibility wrapper for Orchestrator continuation."""
+        return self.orchestrator.continue_execution(execution_id).result
 
     def start(self) -> _LoomHTTPServer:
         """Bind the HTTP server and return its running server instance."""
@@ -144,19 +127,17 @@ class LoomServer:
                     return
                 if self.path.startswith("/executions/"):
                     execution_id = self.path.removeprefix("/executions/")
-                    if not execution_id or owner.execution_store is None:
+                    if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
                     try:
-                        execution = owner.execution_store.load(execution_id)
-                    except ExecutionStateCorruptError as exc:
+                        execution = owner.orchestrator.observe(execution_id)
+                    except KeyError as exc:
+                        self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+                        return
+                    except ExecutionStateError as exc:
                         self._send(
                             HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
-                        )
-                        return
-                    if execution is None:
-                        self._send(
-                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
                         )
                         return
                     self._send(HTTPStatus.OK, _execution_payload(execution))
@@ -172,22 +153,25 @@ class LoomServer:
                         .removesuffix("/continue")
                         .strip("/")
                     )
-                    if not execution_id or owner.execution_store is None:
+                    if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
                     try:
-                        result = owner.continue_execution(execution_id)
+                        submission = owner.orchestrator.continue_execution(execution_id)
                     except KeyError as exc:
                         self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
                         return
-                    except ExecutionStateCorruptError as exc:
+                    except ExecutionStateError as exc:
                         self._send(
                             HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
                         )
                         return
                     self._send(
                         HTTPStatus.OK,
-                        {"execution_id": execution_id, **_result_payload(result)},
+                        {
+                            "execution_id": submission.execution_id,
+                            **_result_payload(submission.result),
+                        },
                     )
                     return
 
@@ -231,11 +215,11 @@ class LoomServer:
                         intent_id=payload.get("intent_id") or str(uuid4()),
                         provenance=provenance,
                     )
-                    execution_id = payload.get("execution_id") or str(uuid4())
-                    if owner.execution_store is None:
-                        result = owner.execute(intent)
-                    else:
-                        result = owner.execute_persisted(intent, execution_id)
+                    submission = owner.orchestrator.submit(
+                        intent,
+                        execution_id=payload.get("execution_id"),
+                    )
+                    result = submission.result
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                     return
@@ -244,47 +228,14 @@ class LoomServer:
                     return
 
                 response = _result_payload(result)
-                if owner.execution_store is not None:
-                    response["execution_id"] = execution_id
+                if submission.execution_id is not None:
+                    response["execution_id"] = submission.execution_id
                 self._send(HTTPStatus.OK, response)
 
             def log_message(self, _format: str, *_args: Any) -> None:
                 return
 
         return Handler
-
-
-def _state_from_result(
-    execution_id: str,
-    intent: Intent,
-    result: WorkerResult,
-    *,
-    phase: str,
-    prior: ExecutionState | None = None,
-) -> ExecutionState:
-    """Build durable observable state for one execution phase."""
-    prior_evidence = prior.evidence if prior is not None else ()
-    evidence = (
-        prior_evidence
-        + ({"type": "execution-phase", "phase": phase, "execution_id": execution_id},)
-        + result.evidence
-    )
-    return ExecutionState(
-        execution_id=execution_id,
-        intent=intent,
-        state={
-            "last_worker": result.worker_id,
-            "last_status": result.status.value,
-            "phase": phase,
-        },
-        evidence=evidence,
-        status="success" if result.successful else "failed",
-        metadata={
-            "phase": phase,
-            "worker_id": result.worker_id,
-            "result_metadata": dict(result.metadata),
-        },
-    )
 
 
 def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
