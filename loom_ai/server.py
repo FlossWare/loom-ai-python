@@ -74,6 +74,8 @@ class LoomServer:
 
     def execute_persisted(self, intent: Intent, execution_id: str) -> WorkerResult:
         """Compatibility wrapper for a durable Orchestrator submission."""
+        if not self.orchestrator.durable_enabled:
+            raise RuntimeError("durable execution state is not configured")
         return self.orchestrator.submit(intent, execution_id=execution_id).result
 
     def continue_execution(self, execution_id: str) -> WorkerResult:
