@@ -19,6 +19,7 @@ from loom_ai.orchestrator import (
     OrchestratorSubmission,
 )
 from loom_ai.server import LoomServer
+from scripts.loom_mcp_server import LoomHTTPClient
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 
@@ -170,14 +171,10 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         else:
             raise AssertionError("expected missing execution to return HTTP 404")
 
-        cancel_request = Request(
-            f"{base_url}/executions/exec-1/cancel",
-            data=json.dumps({"reason": "test cancellation"}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        cancelled = LoomHTTPClient(base_url).cancel(
+            "exec-1",
+            reason="test cancellation",
         )
-        with urlopen(cancel_request) as response:
-            cancelled = json.load(response)
         assert cancelled["cancellation_accepted"] is True
         assert cancelled["cancellation_pending"] is True
         assert cancelled["status"] == "running"
