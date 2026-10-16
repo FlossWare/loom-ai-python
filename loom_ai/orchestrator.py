@@ -231,10 +231,7 @@ class Orchestrator:
             deadline_wins = (
                 deadline is not None
                 and _is_expired(deadline)
-                and (
-                    prior_requested_at is None
-                    or prior_requested_at >= deadline
-                )
+                and (prior_requested_at is None or prior_requested_at >= deadline)
             )
             if deadline_wins:
                 if token is not None:
