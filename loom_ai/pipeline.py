@@ -6,8 +6,8 @@ configured stages without defining a new language-neutral contract.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Callable, Iterable
 
 from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
@@ -73,8 +73,8 @@ class SequentialArbitrationPipeline:
         selected: WorkerResult | None = None
 
         for index, stage in enumerate(self.stages):
-            # Each Worker receives a separate read-only top-level snapshot. This
-            # prevents one Worker from mutating the mapping seen by its peers.
+            # Give every Worker an isolated context snapshot. Deep-copying the
+            # mappings prevents nested mutable state from leaking between peers.
             worker_results = tuple(
                 worker.execute(self._snapshot(stage_context))
                 for worker in stage.workers
@@ -157,10 +157,10 @@ class SequentialArbitrationPipeline:
 
     @staticmethod
     def _snapshot(context: WorkerContext) -> WorkerContext:
-        """Copy context mappings so sibling Workers share a logical snapshot."""
+        """Copy context state and metadata for an isolated Worker invocation."""
         return WorkerContext(
             intent=context.intent,
-            state=MappingProxyType(dict(context.state)),
-            evidence=tuple(context.evidence),
-            metadata=MappingProxyType(dict(context.metadata)),
+            state=deepcopy(dict(context.state)),
+            evidence=tuple(deepcopy(dict(item)) for item in context.evidence),
+            metadata=deepcopy(dict(context.metadata)),
         )
