@@ -80,7 +80,10 @@ def test_model_worker_sends_intent_requirements_constraints_and_acceptance() -> 
         goal="summarize the result",
         requirements=("be concise", "preserve facts"),
         constraints=("no credentials",),
-        acceptance=("the summary preserves every verified fact", "no unsupported claims"),
+        acceptance=(
+            "the summary preserves every verified fact",
+            "no unsupported claims",
+        ),
     )
 
     worker.execute(WorkerContext(intent=intent))
