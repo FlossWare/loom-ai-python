@@ -84,6 +84,17 @@ is still pending.
 - loom_get_execution -> GET /executions/{execution_id}
 - loom_continue_execution -> POST /executions/{execution_id}/continue
 - loom_cancel_execution -> POST /executions/{execution_id}/cancel
+- loom_record_evaluation -> POST /executions/{execution_id}/evaluations
+
+Durable observation returns separate `lifecycle`, legacy-compatible `status`,
+structured `result`, and `evaluation` / `evaluations` fields. `status` is
+retained for existing clients and describes the prior Worker outcome; it must not
+be used alone as proof that task acceptance criteria were met. The lifecycle
+indicates whether the execution is running, interrupted, or terminal. Evaluation
+status is one of `met`, `partially_met`, `not_met`, `inconclusive`, or
+`not_evaluated`. A completed execution defaults to `not_evaluated` until an
+explicit assessment is recorded. New assessments are appended and do not rewrite
+the execution lifecycle or Result.
 
 The MCP server does not import Loom execution classes, own execution state, replay
 client transcripts, or execute repository work. Loom remains responsible for Intent
@@ -136,6 +147,33 @@ Optional ref/port overrides:
 This is a qualification profile, not a production workflow or a deployed-service
 restart test. Systemd/deployment qualification is tracked separately in
 `FlossWare/loom-setup`.
+
+## Real Crush-to-Loom dogfood
+
+To qualify a fresh Crush session against a real checkout of `FlossWare/loom-ai`,
+use:
+
+    python scripts/dogfood-crush-mcp-real.py --timeout-seconds 900
+
+The harness creates a disposable project-local `.crushrc` that explicitly
+configures the generic Loom MCP server and a FlossWare OpenAI-compatible model
+provider. The default gateway is `http://127.0.0.1:8765/v1`, with model
+`flossware/flossware`. Ensure that gateway is running and reachable from the
+dogfood host. Override the defaults with `FLOSSWARE_CRUSH_BASE_URL` and
+`FLOSSWARE_CRUSH_MODEL`, or pass `--provider-base-url` and `--model`
+directly.
+
+The harness uses an isolated temporary Crush data directory, so it does not
+depend on provider settings in the user's global Crush profile. It makes one
+bounded documentation change in the real `loom-ai` repository, submits and
+continues the execution through generic MCP, then independently checks the
+persisted execution status, intent identity, provenance, changed-file scope,
+and `git diff --check`.
+
+Use `--expect-failure` to qualify the negative path. That run must preserve a
+failed verification result rather than misreporting success. A successful unit
+or MCP smoke test is not a substitute for this fresh-agent qualification; record
+the execution ID and evidence when the full path passes.
 
 ## Development
 
