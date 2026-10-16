@@ -565,6 +565,7 @@ class Orchestrator:
         return self.arbiter.execute(
             WorkerContext(
                 intent=intent,
+                state={"phase": "initial"},
                 deadline=deadline,
                 cancellation_token=token,
             )
