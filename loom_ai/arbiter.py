@@ -108,13 +108,17 @@ class Arbiter:
         status: str,
         reason: str = "",
     ) -> WorkerResult:
-        successful = status == "complete"
+        result_status = {
+            "complete": WorkerStatus.SUCCESS,
+            "failed": WorkerStatus.FAILED,
+            "cancelled": WorkerStatus.CANCELLED,
+        }[status]
         return WorkerResult(
             worker_id=self.worker_id,
-            status=WorkerStatus.SUCCESS if successful else WorkerStatus.FAILED,
+            status=result_status,
             output=outputs,
             evidence=tuple(evidence),
-            error="" if successful else reason,
+            error="" if result_status is not WorkerStatus.FAILED else reason,
             metadata={
                 "arbiter_id": self.worker_id,
                 "workers": [result.worker_id for result in outputs],
