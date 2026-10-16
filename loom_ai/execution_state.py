@@ -17,7 +17,9 @@ from typing import Any, Mapping, Protocol
 from loom_ai.intent import Intent
 
 EXECUTION_STATE_VERSION = 1
-_TERMINAL_STATUSES = frozenset({"success", "failed", "cancelled"})
+_OUTCOME_STATUSES = frozenset({"success", "failed", "cancelled"})
+_LIFECYCLE_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_LIFECYCLE_STATUSES = frozenset({"running", "interrupted", *_LIFECYCLE_TERMINAL_STATUSES})
 
 
 class ExecutionStateError(ValueError):
@@ -40,12 +42,29 @@ class ExecutionState:
     metadata: Mapping[str, Any] = field(default_factory=dict)
     representation_version: int = EXECUTION_STATE_VERSION
     result: Mapping[str, Any] | None = None
+    lifecycle_status: str | None = None
+    evaluations: tuple[Mapping[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.execution_id.strip():
             raise ExecutionStateError("execution_id must not be empty")
-        if self.status not in {"running", "interrupted", *_TERMINAL_STATUSES}:
-            raise ExecutionStateError(f"unsupported execution status: {self.status!r}")
+        if self.status not in {"running", "interrupted", *_OUTCOME_STATUSES}:
+            raise ExecutionStateError(f"unsupported outcome status: {self.status!r}")
+        if self.lifecycle_status is None:
+            inferred = {
+                "running": "running",
+                "interrupted": "interrupted",
+                "cancelled": "cancelled",
+                "success": "completed",
+                "failed": "completed",
+            }[self.status]
+            object.__setattr__(self, "lifecycle_status", inferred)
+        if self.lifecycle_status not in _LIFECYCLE_STATUSES:
+            raise ExecutionStateError(
+                f"unsupported lifecycle status: {self.lifecycle_status!r}"
+            )
+        if not all(isinstance(item, Mapping) for item in self.evaluations):
+            raise ExecutionStateError("evaluations must contain mappings")
         if self.representation_version != EXECUTION_STATE_VERSION:
             raise ExecutionStateError(
                 f"unsupported execution-state version: {self.representation_version}"
@@ -55,7 +74,19 @@ class ExecutionState:
     def terminal(self) -> bool:
         """Whether the snapshot represents a terminal execution outcome."""
 
-        return self.status in _TERMINAL_STATUSES
+        return self.lifecycle_status in _LIFECYCLE_TERMINAL_STATUSES
+
+    @property
+    def outcome_status(self) -> str | None:
+        """Return the legacy outcome field, or None while execution is in flight."""
+        return self.status if self.status in _OUTCOME_STATUSES else None
+
+    @property
+    def latest_evaluation_status(self) -> str:
+        """Return the newest assessment status, without aggregating assessments."""
+        if not self.evaluations:
+            return "not_evaluated"
+        return str(self.evaluations[-1].get("status", "not_evaluated"))
 
 
 class ExecutionStateStore(Protocol):
@@ -144,6 +175,8 @@ def _execution_to_dict(execution: ExecutionState) -> dict[str, Any]:
         "state": dict(execution.state),
         "evidence": [dict(item) for item in execution.evidence],
         "status": execution.status,
+        "lifecycle_status": execution.lifecycle_status,
+        "evaluations": [dict(item) for item in execution.evaluations],
         "metadata": dict(execution.metadata),
         "result": dict(execution.result) if execution.result is not None else None,
     }
@@ -169,6 +202,11 @@ def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
     result = payload.get("result")
     if result is not None and not isinstance(result, dict):
         raise TypeError("result must be a JSON object or null")
+    evaluations = payload.get("evaluations", [])
+    if not isinstance(evaluations, list) or not all(
+        isinstance(item, dict) for item in evaluations
+    ):
+        raise TypeError("evaluations must be a list of JSON objects")
 
     return ExecutionState(
         execution_id=expected_id,
@@ -186,5 +224,7 @@ def _execution_from_dict(payload: Any, *, expected_id: str) -> ExecutionState:
         status=payload["status"],
         metadata=dict(payload.get("metadata", {})),
         result=dict(result) if result is not None else None,
+        lifecycle_status=payload.get("lifecycle_status"),
+        evaluations=tuple(evaluations),
         representation_version=payload["representation_version"],
     )
