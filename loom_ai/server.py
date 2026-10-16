@@ -196,32 +196,7 @@ class LoomServer:
                         return
 
                     payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                    if not isinstance(payload, dict):
-                        raise TypeError("request body must be a JSON object")
-
-                    provenance = payload.get("provenance", {})
-                    if not isinstance(provenance, dict):
-                        raise TypeError("provenance must be a JSON object")
-                    if not all(
-                        isinstance(key, str) and isinstance(value, str)
-                        for key, value in provenance.items()
-                    ):
-                        raise TypeError("provenance keys and values must be strings")
-
-                    intent = Intent(
-                        title=payload.get("title", "Intent"),
-                        goal=payload["goal"],
-                        requirements=tuple(payload.get("requirements", ())),
-                        constraints=tuple(payload.get("constraints", ())),
-                        acceptance=tuple(payload.get("acceptance", ())),
-                        intent_id=payload.get("intent_id") or str(uuid4()),
-                        provenance=provenance,
-                    )
-                    submission = owner.orchestrator.submit(
-                        intent,
-                        execution_id=payload.get("execution_id"),
-                    )
-                    result = submission.result
+                    intent, requested_execution_id = _parse_intent(payload)
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                     return
@@ -229,7 +204,16 @@ class LoomServer:
                     self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
                     return
 
-                response = _result_payload(result)
+                try:
+                    submission = owner.orchestrator.submit(
+                        intent,
+                        execution_id=requested_execution_id,
+                    )
+                except Exception as exc:  # pragma: no cover
+                    self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+                    return
+
+                response = _result_payload(submission.result)
                 if submission.execution_id is not None:
                     response["execution_id"] = submission.execution_id
                 self._send(HTTPStatus.OK, response)
@@ -238,6 +222,55 @@ class LoomServer:
                 return
 
         return Handler
+
+
+def _parse_intent(payload: Any) -> tuple[Intent, str | None]:
+    """Validate an HTTP Intent representation and translate it to the contract."""
+    if not isinstance(payload, dict):
+        raise TypeError("request body must be a JSON object")
+
+    title = payload.get("title", "Intent")
+    goal = payload.get("goal")
+    if not isinstance(title, str):
+        raise TypeError("title must be a string")
+    if not isinstance(goal, str) or not goal.strip():
+        raise ValueError("goal must be a non-empty string")
+
+    sequences: dict[str, tuple[str, ...]] = {}
+    for field in ("requirements", "constraints", "acceptance"):
+        values = payload.get(field, [])
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) for value in values
+        ):
+            raise TypeError(f"{field} must be an array of strings")
+        sequences[field] = tuple(values)
+
+    intent_id = payload.get("intent_id")
+    if intent_id is not None and not isinstance(intent_id, str):
+        raise TypeError("intent_id must be a string")
+    provenance = payload.get("provenance", {})
+    if not isinstance(provenance, dict):
+        raise TypeError("provenance must be a JSON object")
+    if not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in provenance.items()
+    ):
+        raise TypeError("provenance keys and values must be strings")
+
+    execution_id = payload.get("execution_id")
+    if execution_id is not None and not isinstance(execution_id, str):
+        raise TypeError("execution_id must be a string")
+
+    intent = Intent(
+        title=title,
+        goal=goal,
+        requirements=sequences["requirements"],
+        constraints=sequences["constraints"],
+        acceptance=sequences["acceptance"],
+        intent_id=intent_id or str(uuid4()),
+        provenance=provenance,
+    )
+    return intent, execution_id or None
 
 
 def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
