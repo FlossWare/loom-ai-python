@@ -63,6 +63,36 @@ def test_nested_arbiter_works_as_worker() -> None:
     assert result.output[0].output[0].worker_id == "leaf"
 
 
+def test_nested_arbiter_interrupt_propagates_to_root() -> None:
+    context = WorkerContext(
+        intent=Intent(goal="pause nested execution", intent_id="intent-interrupt"),
+        state={"phase": "initial"},
+    )
+    leaf = StubWorker("leaf")
+    root_evaluator_called = False
+
+    child = Arbiter(
+        [leaf],
+        lambda _result, _context: WorkerEvaluation(
+            ArbiterDecision.INTERRUPT,
+            reason="external work required",
+        ),
+        worker_id="child",
+    )
+
+    def evaluate_root(_result, _context):
+        nonlocal root_evaluator_called
+        root_evaluator_called = True
+        return WorkerEvaluation(ArbiterDecision.COMPLETE)
+
+    root = Arbiter([child], evaluate_root, worker_id="root")
+    result = root.execute(context)
+
+    assert result.successful
+    assert result.metadata["continuation_pending"] is True
+    assert root_evaluator_called is False
+
+
 def test_failed_worker_without_follow_up_work_is_terminal_failure() -> None:
     intent = Intent(goal="failed terminal", intent_id="intent-3")
     context = WorkerContext(intent=intent)
