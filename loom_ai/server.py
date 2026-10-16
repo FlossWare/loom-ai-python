@@ -184,7 +184,9 @@ class LoomServer:
                         payload = json.loads(raw_body) if raw_body else {}
                         if not isinstance(payload, dict):
                             raise TypeError("request body must be a JSON object")
-                        status = EvaluationStatus(payload.get("status", "not_evaluated"))
+                        status = EvaluationStatus(
+                            payload.get("status", "not_evaluated")
+                        )
                         criteria = payload.get("criteria", [])
                         evidence = payload.get("evidence", [])
                         provenance = payload.get("provenance", {})
