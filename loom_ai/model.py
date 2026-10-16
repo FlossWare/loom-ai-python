@@ -15,7 +15,11 @@ def _freeze(values: Mapping[str, str]) -> Mapping[str, str]:
 
 @dataclass(frozen=True)
 class ModelRequest:
-    """Provider-neutral request supplied to a model provider."""
+    """Provider-neutral request supplied to a model provider.
+
+    ``timeout_seconds`` is an optional positive finite transport budget that
+    provider adapters are required to honor when supplied.
+    """
 
     prompt: str
     model: str = "default"
