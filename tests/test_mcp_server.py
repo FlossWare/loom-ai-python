@@ -9,8 +9,8 @@ from mcp import Client, StdioServerParameters
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 from scripts.loom_mcp_server import LoomHTTPClient, create_server
+from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 
 class RecordingWorker:
@@ -43,6 +43,13 @@ class FakeClient:
             "continued": True,
         }
 
+    def cancel(self, execution_id, reason=None):
+        return {
+            "execution_id": execution_id,
+            "status": "cancellation_requested",
+            "reason": reason,
+        }
+
 
 def test_mcp_client_discovers_generic_loom_tools() -> None:
     async def run() -> None:
@@ -52,6 +59,7 @@ def test_mcp_client_discovers_generic_loom_tools() -> None:
                 "loom_submit_intent",
                 "loom_get_execution",
                 "loom_continue_execution",
+                "loom_cancel_execution",
             ]
             assert client.server_info.name == "loom"
 
@@ -160,6 +168,14 @@ def test_mcp_client_invokes_all_loom_tools() -> None:
             continued_payload = json.loads(continued.content[0].text)
             assert continued_payload["continued"] is True
 
+            cancelled = await client.call_tool(
+                "loom_cancel_execution",
+                {"execution_id": "exec-1", "reason": "test cancellation"},
+            )
+            cancelled_payload = json.loads(cancelled.content[0].text)
+            assert cancelled_payload["status"] == "cancellation_requested"
+            assert cancelled_payload["reason"] == "test cancellation"
+
     asyncio.run(run())
 
 
@@ -169,6 +185,7 @@ def test_http_client_maps_only_public_loom_endpoints() -> None:
     assert callable(client.submit)
     assert callable(client.observe)
     assert callable(client.continue_execution)
+    assert callable(client.cancel)
 
 
 def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
@@ -179,6 +196,9 @@ def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
     client = RecordingClient("http://example.test")
     observed = client.observe("execution/with spaces")
     continued = client.continue_execution("execution/with spaces")
+    cancelled = client.cancel("execution/with spaces", "stop now")
 
     assert observed["path"] == "/executions/execution%2Fwith%20spaces"
     assert continued["path"] == "/executions/execution%2Fwith%20spaces/continue"
+    assert cancelled["path"] == "/executions/execution%2Fwith%20spaces/cancel"
+    assert cancelled["payload"] == {"reason": "stop now"}
