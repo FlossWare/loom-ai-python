@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from threading import Thread
 from urllib.request import Request, urlopen
 
@@ -82,7 +81,12 @@ def test_evaluation_is_appended_without_rewriting_result_or_lifecycle(
             criteria_version="1",
             evaluator="test-suite",
             evaluator_version="0.1",
-            evidence=({"check": "artifact-exists", "passed": status is EvaluationStatus.MET},),
+            evidence=(
+                {
+                    "check": "artifact-exists",
+                    "passed": status is EvaluationStatus.MET,
+                },
+            ),
             provenance={"source": "regression-test"},
         ),
     )
