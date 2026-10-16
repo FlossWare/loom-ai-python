@@ -6,6 +6,7 @@ owned by FlossWare/loom.
 """
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.evaluation import EvaluationRecord, EvaluationStatus
 from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateCorruptError,
@@ -42,6 +43,8 @@ __all__ = [
     "CancellationResult",
     "CancellationToken",
     "ArbitrationStage",
+    "EvaluationRecord",
+    "EvaluationStatus",
     "ExecutionState",
     "ExecutionStateCorruptError",
     "ExecutionStateError",
