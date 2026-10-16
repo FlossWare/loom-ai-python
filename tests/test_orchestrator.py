@@ -170,7 +170,7 @@ class RecordingOrchestrator:
 
     def observe(self, execution_id: str) -> ExecutionState:
         self.calls.append(("observe", execution_id))
-        if execution_id != "exec-1":
+        if execution_id not in {"exec-1", "exec/1"}:
             raise KeyError(f"execution not found: {execution_id}")
         return ExecutionState(
             execution_id=execution_id,
@@ -248,6 +248,11 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         assert cancelled["cancellation_pending"] is True
         assert cancelled["status"] == "running"
 
+        encoded_observation = LoomHTTPClient(base_url).observe("exec/1")
+        assert encoded_observation["execution_id"] == "exec/1"
+        encoded_cancellation = LoomHTTPClient(base_url).cancel("exec/1")
+        assert encoded_cancellation["execution_id"] == "exec/1"
+
         request = Request(
             f"{base_url}/executions/exec-1/continue",
             data=b"{}",
@@ -261,6 +266,8 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         assert [call[0] for call in service.calls] == [
             "submit",
             "observe",
+            "observe",
+            "cancel",
             "observe",
             "cancel",
             "continue",
