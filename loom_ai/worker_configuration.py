@@ -8,6 +8,7 @@ credentials, contact model providers, or invoke capabilities.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -282,7 +283,7 @@ def validate_worker_configuration(
         policy_ref=policy_ref,
         approval_required=approval_required,
         limits=WorkerLimits(**limit_values),
-        metadata=MappingProxyType(dict(metadata)),
+        metadata=_freeze_metadata(metadata),
     )
 
 
@@ -315,3 +316,33 @@ def _string_list(
     if unique and len(set(values)) != len(values):
         raise WorkerConfigurationError(f"{path} must not contain duplicates")
     return values
+
+
+def _freeze_metadata(value: Any, path: str = "metadata") -> Mapping[str, Any]:
+    """Deep-freeze JSON-compatible metadata so validated config cannot drift."""
+    if not isinstance(value, Mapping):
+        raise WorkerConfigurationError(f"{path} must be an object")
+    frozen: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise WorkerConfigurationError(f"{path} keys must be strings")
+        frozen[key] = _freeze_metadata_value(item, f"{path}.{key}")
+    return MappingProxyType(frozen)
+
+
+def _freeze_metadata_value(value: Any, path: str) -> Any:
+    """Freeze one JSON-compatible metadata value recursively."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not isfinite(value):
+            raise WorkerConfigurationError(f"{path} must be a finite JSON number")
+        return value
+    if isinstance(value, Mapping):
+        return _freeze_metadata(value, path)
+    if isinstance(value, list):
+        return tuple(
+            _freeze_metadata_value(item, f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
+    raise WorkerConfigurationError(f"{path} must contain only JSON-compatible values")
