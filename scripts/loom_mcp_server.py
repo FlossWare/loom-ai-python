@@ -78,8 +78,10 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
         version="0.1",
         instructions=(
             "Loom is the execution service. Use these tools to submit intents, "
-            "observe durable execution state, and continue existing executions. "
-            "Do not assume this MCP server owns execution state."
+            "observe and continue durable executions, and request cancellation. "
+            "A submission may include an absolute RFC 3339 deadline. Cancellation "
+            "may remain pending until active work stops. This MCP server does not "
+            "own execution state."
         ),
     )
 
