@@ -272,7 +272,9 @@ class LoomServer:
                     except KeyError:
                         self._send(
                             HTTPStatus.NOT_FOUND,
-                            _error_payload("execution.not_found", "execution not found"),
+                            _error_payload(
+                                "execution.not_found", "execution not found"
+                            ),
                         )
                         return
                     except (TypeError, ValueError) as exc:
