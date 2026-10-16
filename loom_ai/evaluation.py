@@ -39,7 +39,9 @@ class EvaluationRecord:
             try:
                 object.__setattr__(self, "status", EvaluationStatus(self.status))
             except (TypeError, ValueError) as exc:
-                raise ValueError(f"unsupported evaluation status: {self.status!r}") from exc
+                raise ValueError(
+                    f"unsupported evaluation status: {self.status!r}"
+                ) from exc
         if not all(isinstance(item, str) for item in self.criteria):
             raise TypeError("evaluation criteria must be strings")
         if not all(isinstance(item, Mapping) for item in self.evidence):
