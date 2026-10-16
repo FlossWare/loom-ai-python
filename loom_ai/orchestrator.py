@@ -156,7 +156,7 @@ class Orchestrator:
                         phase="initial",
                         deadline=absolute_deadline,
                         cancellation=(
-                            {"requested": True, "reason": token.reason}
+                            _cancellation_metadata(token)
                             if token.requested
                             else None
                         ),
@@ -175,7 +175,7 @@ class Orchestrator:
                     output=result.output,
                 )
             cancellation = (
-                {"requested": True, "reason": token.reason}
+                _cancellation_metadata(token)
                 if control_cause == "cancelled"
                 else None
             )
@@ -306,6 +306,7 @@ class Orchestrator:
 
             if token is not None:
                 token.cancel(reason)
+                cancellation["pending"] = True
                 updated = replace(
                     execution,
                     state=state,
@@ -437,7 +438,7 @@ class Orchestrator:
                         prior=execution,
                         deadline=deadline,
                         cancellation=(
-                            {"requested": True, "reason": token.reason}
+                            _cancellation_metadata(token)
                             if token.requested
                             else None
                         ),
@@ -461,7 +462,7 @@ class Orchestrator:
                     prior=execution,
                     deadline=deadline,
                     cancellation=(
-                        {"requested": True, "reason": token.reason}
+                        _cancellation_metadata(token)
                         if control_cause == "cancelled"
                         else None
                     ),
@@ -509,6 +510,20 @@ def parse_deadline(value: datetime | str | None) -> datetime | None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("deadline must include an explicit UTC offset")
     return value.astimezone(timezone.utc)
+
+
+def _cancellation_metadata(token: CancellationToken) -> dict:
+    """Serialize the first cancellation request for durable lifecycle state."""
+    requested_at = token.requested_at
+    return {
+        "requested": True,
+        "reason": token.reason,
+        **(
+            {"requested_at": requested_at.isoformat()}
+            if requested_at is not None
+            else {}
+        ),
+    }
 
 
 def _control_cause(
