@@ -15,6 +15,7 @@ from loom_ai.intent import Intent
 from loom_ai.orchestrator import Orchestrator
 from loom_ai.server import LoomServer
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from scripts.loom_mcp_server import LoomHTTPClient
 
 
 class SuccessfulWorker:
@@ -194,6 +195,21 @@ def test_http_exposes_and_records_evaluation_without_changing_lifecycle(tmp_path
         assert evaluated["evaluation"]["status"] == "met"
         assert len(evaluated["evaluations"]) == 1
         assert evaluated["result"]["status"] == "success"
+
+        mcp_client = LoomHTTPClient(base_url)
+        observed = mcp_client.observe("http-evaluation")
+        assert observed["lifecycle"] == "completed"
+        assert observed["evaluation"]["status"] == "met"
+        updated = mcp_client.record_evaluation(
+            "http-evaluation",
+            status="inconclusive",
+            criteria=["artifact exists"],
+            evaluator="mcp-client-test",
+        )
+        assert updated["status"] == "success"
+        assert updated["lifecycle"] == "completed"
+        assert updated["evaluation"]["status"] == "inconclusive"
+        assert len(updated["evaluations"]) == 2
     finally:
         server.close()
         thread.join(timeout=2)
@@ -225,7 +241,9 @@ def test_terminal_lifecycle_is_independent_of_result_outcome(
         Arbiter([StatusWorker()], evaluate, max_retries=0),
         execution_store=FileExecutionStateStore(tmp_path),
     )
-    orchestrator.submit(Intent(goal="separate lifecycle and outcome"), execution_id="terminal")
+    orchestrator.submit(
+        Intent(goal="separate lifecycle and outcome"), execution_id="terminal"
+    )
     observed = orchestrator.observe("terminal")
 
     assert observed.terminal
@@ -245,6 +263,7 @@ def test_evaluation_cannot_be_recorded_before_a_terminal_result(tmp_path) -> Non
             lifecycle="running",
         )
     )
+
     def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
         return WorkerEvaluation(ArbiterDecision.COMPLETE)
 
