@@ -7,8 +7,6 @@ one application-facing authority.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
@@ -18,7 +16,11 @@ from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter
 from loom_ai.evaluation import EvaluationRecord
-from loom_ai.execution_state import ExecutionState, ExecutionStateStore
+from loom_ai.execution_state import (
+    ExecutionState,
+    ExecutionStateStore,
+    execution_result_reference,
+)
 from loom_ai.intent import Intent
 from loom_ai.worker import (
     CancellationToken,
@@ -227,11 +229,9 @@ class Orchestrator:
                 raise ValueError("evaluation intent_id does not match execution Intent")
             if not execution.terminal or execution.result is None:
                 raise ValueError("evaluation requires a terminal execution result")
-            result_reference = hashlib.sha256(
-                json.dumps(
-                    execution.result, sort_keys=True, separators=(",", ":")
-                ).encode("utf-8")
-            ).hexdigest()
+            result_reference = execution_result_reference(execution)
+            if result_reference is None:
+                raise ValueError("evaluation requires a terminal execution result")
             if evaluation.result_reference not in (None, result_reference):
                 raise ValueError("evaluation result_reference does not match current Result")
             record = replace(
