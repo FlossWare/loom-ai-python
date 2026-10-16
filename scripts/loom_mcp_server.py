@@ -141,19 +141,6 @@ def create_server(client: LoomHTTPClient) -> MCPServer:
     ) -> dict:
         return client.cancel(execution_id, reason)
 
-    @server.tool(
-        name="loom_cancel_execution",
-        description=(
-            "Request cooperative cancellation of a durable Loom execution. "
-            "The result distinguishes accepted cancellation from confirmed termination."
-        ),
-    )
-    def cancel_execution(
-        execution_id: str,
-        reason: str | None = None,
-    ) -> dict:
-        return client.cancel(execution_id, reason)
-
     return server
 
 
