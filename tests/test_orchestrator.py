@@ -298,7 +298,7 @@ def test_expired_deadline_is_persisted_without_starting_a_worker(tmp_path) -> No
     assert submission.result.metadata["termination_cause"] == "deadline_exceeded"
     assert state.status == "failed"
     assert state.metadata["termination_cause"] == "deadline_exceeded"
-    assert state.metadata["deadline"] == deadline.replace("+00:00", "+00:00")
+    assert state.metadata["deadline"] == deadline
 
 
 def test_active_cancellation_is_pending_until_worker_returns(tmp_path) -> None:
