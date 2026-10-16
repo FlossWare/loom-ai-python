@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -24,6 +25,8 @@ root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 
 from loom_ai import (
+    EvaluationRecord,
+    EvaluationStatus,
     Arbiter,
     ArbiterDecision,
     WorkerEvaluation,
@@ -182,6 +185,39 @@ def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
     )
 
 
+def evaluate_task(
+    execution_id: str,
+    _intent,
+    result: WorkerResult,
+    phase: str,
+) -> EvaluationRecord:
+    if phase == "initial":
+        status = EvaluationStatus.NOT_EVALUATED
+    elif (
+        result.status is WorkerStatus.SUCCESS
+        and any(
+            item.get("type") == "real-repository-verification"
+            for item in result.evidence
+        )
+    ):
+        status = EvaluationStatus.MET
+    elif result.status is WorkerStatus.FAILED:
+        status = EvaluationStatus.NOT_MET
+    else:
+        status = EvaluationStatus.INCONCLUSIVE
+    return EvaluationRecord(
+        execution_id=execution_id,
+        criteria_id="loom-ai-dogfood-documentation-marker",
+        criteria_version="1",
+        evaluator_id="real-repository-verifier",
+        evaluator_version="1",
+        status=status,
+        evaluated_at=datetime.now(timezone.utc).isoformat(),
+        evidence=tuple(result.evidence),
+        provenance={"issue": ISSUE, "target_file": TARGET_FILE, "phase": phase},
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
@@ -241,6 +277,7 @@ def main() -> int:
             host="127.0.0.1",
             port=0,
             execution_store=store,
+            task_evaluator=evaluate_task,
         )
         http_server = server.start()
         thread = threading.Thread(
@@ -352,11 +389,26 @@ Execution protocol:
             print("\n==> Durable Loom execution")
             print(json.dumps(execution, indent=2, sort_keys=True))
             expected_execution_status = "failed" if args.expect_failure else "success"
-            if execution.get("status") != expected_execution_status:
+            if execution.get("outcome_status") != expected_execution_status:
                 fail(
-                    f"Loom execution status is {execution.get('status')!r}; "
+                    f"Loom outcome status is {execution.get('outcome_status')!r}; "
                     f"expected {expected_execution_status!r}"
                 )
+            if execution.get("lifecycle_status") != "completed":
+                fail(
+                    f"Loom lifecycle status is {execution.get('lifecycle_status')!r}; "
+                    "expected 'completed'"
+                )
+            expected_evaluation_status = "not_met" if args.expect_failure else "met"
+            if execution.get("latest_evaluation_status") != expected_evaluation_status:
+                fail(
+                    "Loom latest evaluation status is "
+                    f"{execution.get('latest_evaluation_status')!r}; "
+                    f"expected {expected_evaluation_status!r}"
+                )
+            evaluations = execution.get("evaluations", [])
+            if not evaluations or evaluations[-1].get("execution_id") != execution_id:
+                fail("Loom did not persist an evaluation for this execution")
             if execution.get("intent_id") != intent_id:
                 fail("Loom intent_id does not match")
 
