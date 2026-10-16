@@ -45,13 +45,13 @@ def test_capability_invocation_requires_explicit_approval() -> None:
     calls = []
     config = configuration()
 
-    with pytest.raises(CapabilityInvocationError, match="explicit approval"):
+    with pytest.raises(CapabilityInvocationError, match="not approved"):
         invoke_capability(
             config,
             "repository.read",
             {"path": "README.md"},
             bindings={"repository.read": lambda args: calls.append(args)},
-            approval_granted="yes",  # Truthy is not an approval decision.
+            approval_authorizer=lambda *_: "yes",  # Must return literal True.
         )
 
     assert calls == []
@@ -108,3 +108,36 @@ def test_binding_exception_is_wrapped_without_leaking_message() -> None:
 
     assert "secret path" not in str(exc.value)
     assert isinstance(exc.value.__cause__, RuntimeError)
+
+
+def test_capability_invocation_requires_trusted_authorizer() -> None:
+    calls = []
+    config = configuration()
+
+    with pytest.raises(CapabilityInvocationError, match="approval authorizer"):
+        invoke_capability(
+            config,
+            "repository.read",
+            {"path": "README.md"},
+            bindings={"repository.read": lambda args: calls.append(args)},
+        )
+
+    assert calls == []
+
+
+def test_approved_capability_invocation_calls_binding() -> None:
+    config = configuration()
+    approved = []
+
+    result = invoke_capability(
+        config,
+        "repository.read",
+        {"path": "README.md"},
+        bindings={"repository.read": lambda args: "contents:" + args["path"]},
+        approval_authorizer=lambda _config, capability, _args: approved.append(
+            capability
+        ) or True,
+    )
+
+    assert result == "contents:README.md"
+    assert approved == ["repository.read"]
