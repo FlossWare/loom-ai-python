@@ -18,6 +18,7 @@ from loom_ai.arbiter import Arbiter
 from loom_ai.evaluation import EvaluationRecord
 from loom_ai.execution_state import (
     ExecutionState,
+    ExecutionStateConflictError,
     ExecutionStateStore,
     execution_result_reference,
 )
@@ -94,8 +95,7 @@ class Orchestrator:
                 return OrchestratorSubmission(None, result)
             actual_id = execution_id or str(uuid4())
             with self._lock:
-                self._ensure_execution_id_available(actual_id)
-                self.execution_store.save(
+                self._create_execution(
                     _state_from_result(
                         actual_id,
                         intent,
@@ -115,11 +115,10 @@ class Orchestrator:
         actual_id = execution_id or str(uuid4())
         token = CancellationToken()
         with self._lock:
-            self._ensure_execution_id_available(actual_id)
             metadata: dict = {"phase": "initial"}
             if absolute_deadline is not None:
                 metadata["deadline"] = absolute_deadline.isoformat()
-            self.execution_store.save(
+            self._create_execution(
                 ExecutionState(
                     execution_id=actual_id,
                     intent=intent,
@@ -562,13 +561,13 @@ class Orchestrator:
             )
         )
 
-    def _ensure_execution_id_available(self, execution_id: str) -> None:
-        """Reject duplicate durable identities before replacing state or work."""
+    def _create_execution(self, execution: ExecutionState) -> None:
+        """Claim a durable identity atomically before invoking any Worker."""
         store = self._require_store()
-        if store.load(execution_id) is not None:
-            raise ExecutionAlreadyExistsError(
-                f"execution already exists: {execution_id}"
-            )
+        try:
+            store.create(execution)
+        except ExecutionStateConflictError as exc:
+            raise ExecutionAlreadyExistsError(str(exc)) from exc
 
     def _require_store(self) -> ExecutionStateStore:
         if self.execution_store is None:
