@@ -208,7 +208,6 @@ def test_configuration_cannot_widen_registered_capabilities() -> None:
         validate(value)
 
 
-
 def test_validated_metadata_is_deeply_immutable() -> None:
     result = validate(config())
 
