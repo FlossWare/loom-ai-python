@@ -89,7 +89,6 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
 
 
 
-
 def test_continuation_preserves_state_metadata_and_prior_structured_result(
     tmp_path,
 ) -> None:
@@ -132,7 +131,9 @@ def test_continuation_preserves_state_metadata_and_prior_structured_result(
     assert observed.state["repository_revision"] == "abc123"
     assert observed.metadata["caller"] == "test"
     assert observed.result is not None
-    assert observed.result["worker_id"] == "fixed"
+    assert observed.result["worker_id"] == "arbiter"
+    assert observed.result["output"][0]["worker_id"] == "fixed"
+    assert observed.result["output"][0]["output"] == {"answer": 42}
     assert observed.result["status"] == "success"
     assert observed.evidence[0] == {"source": "prior-stage"}
 
