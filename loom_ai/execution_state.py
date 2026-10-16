@@ -82,10 +82,7 @@ class ExecutionState:
         if not self.evaluations:
             return EvaluationRecord(result_reference=reference)
         latest = self.evaluations[-1]
-        if (
-            latest.result_reference is not None
-            and latest.result_reference != reference
-        ):
+        if latest.result_reference is not None and latest.result_reference != reference:
             return EvaluationRecord(result_reference=reference)
         return latest
 
