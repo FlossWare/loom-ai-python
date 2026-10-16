@@ -149,7 +149,6 @@ def test_duration_budget_rejects_slow_synchronous_provider_result(monkeypatch) -
     assert result.metadata["termination_cause"] == "duration_limit"
 
 
-
 @pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True])
 def test_model_request_rejects_invalid_timeout(timeout) -> None:
     with pytest.raises(ValueError, match="timeout_seconds"):
