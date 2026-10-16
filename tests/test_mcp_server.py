@@ -9,8 +9,8 @@ from mcp import Client, StdioServerParameters
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.server import LoomServer
-from scripts.loom_mcp_server import LoomHTTPClient, create_server
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from scripts.loom_mcp_server import LoomHTTPClient, create_server
 
 
 class RecordingWorker:
@@ -78,6 +78,7 @@ def test_mcp_stdio_protocol_with_external_process() -> None:
                 "loom_submit_intent",
                 "loom_get_execution",
                 "loom_continue_execution",
+                "loom_cancel_execution",
             ]
 
     asyncio.run(run())
