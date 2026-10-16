@@ -65,7 +65,7 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     store = FileExecutionStateStore(tmp_path)
     orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
     intent = Intent(goal="continue this execution", provenance={"source": "test"})
-    orchestrator.submit(intent, "continuing-execution")
+    orchestrator.submit(intent, execution_id="continuing-execution")
 
     submission = orchestrator.continue_execution("continuing-execution")
     observed = orchestrator.observe("continuing-execution")
