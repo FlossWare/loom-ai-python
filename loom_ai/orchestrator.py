@@ -35,6 +35,10 @@ class ExecutionAlreadyExistsError(RuntimeError):
     """Raised when a submission reuses an existing durable execution identity."""
 
 
+class ExecutionNotResumableError(RuntimeError):
+    """Raised when continuation is requested for a non-interrupted execution."""
+
+
 @dataclass(frozen=True)
 class OrchestratorSubmission:
     """Result of submitting or continuing an execution."""
@@ -400,6 +404,10 @@ class Orchestrator:
             execution = store.load(execution_id)
             if execution is None:
                 raise KeyError(f"execution not found: {execution_id}")
+            if execution.lifecycle != "interrupted":
+                raise ExecutionNotResumableError(
+                    f"execution is not resumable: {execution_id}"
+                )
             deadline = parse_deadline(execution.metadata.get("deadline"))
             prior_cancellation = execution.metadata.get("cancellation")
             if isinstance(prior_cancellation, dict) and prior_cancellation.get(
@@ -453,13 +461,14 @@ class Orchestrator:
             self._active[execution_id] = token
 
         context_state = dict(execution.state)
+        context_state["phase"] = "continued"
         if execution.result is not None:
             context_state["last_execution_result"] = execution.result
         context = WorkerContext(
             intent=execution.intent,
             state=context_state,
             evidence=execution.evidence,
-            metadata=execution.metadata,
+            metadata=metadata,
             deadline=deadline,
             cancellation_token=token,
         )
@@ -722,6 +731,11 @@ def _state_from_result(
             "phase": phase,
         }
     )
+    lifecycle = (
+        "interrupted"
+        if result.metadata.get("continuation_pending") is True
+        else "completed"
+    )
     return ExecutionState(
         execution_id=execution_id,
         intent=intent,
@@ -730,7 +744,7 @@ def _state_from_result(
         status=status,
         metadata=metadata,
         result=_result_to_dict(result),
-        lifecycle="completed",
+        lifecycle=lifecycle,
         evaluations=prior.evaluations if prior is not None else (),
     )
 
