@@ -45,7 +45,7 @@ class RepositoryTaskWorker:
 
         try:
             text = target.read_text(encoding="utf-8")
-            continued = context.state.get("phase") == "initial"
+            continued = context.state.get("phase") == "continued"
             if INITIAL_MARKER not in text:
                 addition = (
                     f"\n\n\ndef {INITIAL_MARKER}():\n"
