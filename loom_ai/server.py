@@ -1,8 +1,7 @@
-"""Minimal HTTP transport for the Loom execution substrate.
+"""HTTP transport adapter for the Loom Orchestrator application boundary.
 
-The server owns transport and request-to-Intent translation. Execution remains
-owned by the supplied Arbiter and its Workers. Provider/model access is
-deliberately not part of this module.
+This module owns HTTP parsing and response serialization only. Execution,
+durable lifecycle, and continuation are delegated to Orchestrator.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from uuid import uuid4
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import (
     ExecutionState,
-    ExecutionStateCorruptError,
+    ExecutionStateError,
     ExecutionStateStore,
 )
 from loom_ai.intent import Intent
@@ -35,7 +34,7 @@ class _LoomHTTPServer(ThreadingHTTPServer):
 
 
 class LoomServer:
-    """HTTP transport boundary delegating execution lifecycle to Orchestrator."""
+    """HTTP transport adapter for a configured Loom Orchestrator."""
 
     def __init__(
         self,
@@ -46,32 +45,46 @@ class LoomServer:
         execution_store: ExecutionStateStore | None = None,
         orchestrator: Orchestrator | None = None,
     ) -> None:
-        if orchestrator is not None and (
-            arbiter is not None or execution_store is not None
-        ):
-            raise ValueError("provide either orchestrator or arbiter/execution_store")
-        if orchestrator is None:
+        if orchestrator is not None:
+            if arbiter is not None or execution_store is not None:
+                raise ValueError(
+                    "pass either orchestrator or arbiter/execution_store, not both"
+                )
+            self.orchestrator = orchestrator
+        else:
             if arbiter is None:
-                raise ValueError("arbiter or orchestrator is required")
-            orchestrator = Orchestrator(arbiter, execution_store=execution_store)
+                raise ValueError("an Arbiter or Orchestrator is required")
+            self.orchestrator = Orchestrator(
+                arbiter,
+                execution_store=execution_store,
+            )
         self.host = host
         self.port = port
-        self.orchestrator = orchestrator
         self._server: _LoomHTTPServer | None = None
 
+    @property
+    def arbiter(self) -> Arbiter:
+        """Compatibility access to the Arbiter owned by Orchestrator."""
+        return self.orchestrator.arbiter
+
+    @property
+    def execution_store(self) -> ExecutionStateStore | None:
+        """Compatibility access to the store owned by Orchestrator."""
+        return self.orchestrator.execution_store
+
     def execute(self, intent: Intent) -> WorkerResult:
-        """Compatibility wrapper delegating execution to Orchestrator."""
+        """Compatibility wrapper; execution authority remains Orchestrator."""
         return self.orchestrator.execute(intent)
 
     def execute_persisted(self, intent: Intent, execution_id: str) -> WorkerResult:
-        """Compatibility wrapper delegating durable submission to Orchestrator."""
-        if not self.orchestrator.durable:
+        """Compatibility wrapper for a durable Orchestrator submission."""
+        if not self.orchestrator.durable_enabled:
             raise RuntimeError("durable execution state is not configured")
-        return self.orchestrator.submit(intent, execution_id)
+        return self.orchestrator.submit(intent, execution_id=execution_id).result
 
     def continue_execution(self, execution_id: str) -> WorkerResult:
-        """Compatibility wrapper delegating continuation to Orchestrator."""
-        return self.orchestrator.continue_execution(execution_id)
+        """Compatibility wrapper for Orchestrator continuation."""
+        return self.orchestrator.continue_execution(execution_id).result
 
     def start(self) -> _LoomHTTPServer:
         """Bind the HTTP server and return its running server instance."""
@@ -120,7 +133,7 @@ class LoomServer:
                     return
                 if self.path.startswith("/executions/"):
                     execution_id = self.path.removeprefix("/executions/")
-                    if not execution_id or not owner.orchestrator.durable:
+                    if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
                     try:
@@ -130,7 +143,7 @@ class LoomServer:
                             HTTPStatus.NOT_FOUND, {"error": "execution not found"}
                         )
                         return
-                    except ExecutionStateCorruptError as exc:
+                    except ExecutionStateError as exc:
                         self._send(
                             HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
                         )
@@ -148,22 +161,30 @@ class LoomServer:
                         .removesuffix("/continue")
                         .strip("/")
                     )
-                    if not execution_id or not owner.orchestrator.durable:
+                    if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
                     try:
-                        result = owner.orchestrator.continue_execution(execution_id)
+                        submission = owner.orchestrator.continue_execution(execution_id)
                     except KeyError as exc:
                         self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
                         return
-                    except ExecutionStateCorruptError as exc:
+                    except ExecutionStateError as exc:
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
+                        return
+                    except Exception as exc:  # pragma: no cover
                         self._send(
                             HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
                         )
                         return
                     self._send(
                         HTTPStatus.OK,
-                        {"execution_id": execution_id, **_result_payload(result)},
+                        {
+                            "execution_id": submission.execution_id,
+                            **_result_payload(submission.result),
+                        },
                     )
                     return
 
@@ -186,45 +207,78 @@ class LoomServer:
                         return
 
                     payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                    if not isinstance(payload, dict):
-                        raise TypeError("request body must be a JSON object")
-
-                    provenance = payload.get("provenance", {})
-                    if not isinstance(provenance, dict):
-                        raise TypeError("provenance must be a JSON object")
-                    if not all(
-                        isinstance(key, str) and isinstance(value, str)
-                        for key, value in provenance.items()
-                    ):
-                        raise TypeError("provenance keys and values must be strings")
-
-                    intent = Intent(
-                        title=payload.get("title", "Intent"),
-                        goal=payload["goal"],
-                        requirements=tuple(payload.get("requirements", ())),
-                        constraints=tuple(payload.get("constraints", ())),
-                        acceptance=tuple(payload.get("acceptance", ())),
-                        intent_id=payload.get("intent_id") or str(uuid4()),
-                        provenance=provenance,
-                    )
-                    execution_id = payload.get("execution_id") or str(uuid4())
-                    result = owner.orchestrator.submit(intent, execution_id)
+                    intent, requested_execution_id = _parse_intent(payload)
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                     return
+
+                try:
+                    submission = owner.orchestrator.submit(
+                        intent,
+                        execution_id=requested_execution_id,
+                    )
                 except Exception as exc:  # pragma: no cover
                     self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
                     return
 
-                response = _result_payload(result)
-                if owner.orchestrator.durable:
-                    response["execution_id"] = execution_id
+                response = _result_payload(submission.result)
+                if submission.execution_id is not None:
+                    response["execution_id"] = submission.execution_id
                 self._send(HTTPStatus.OK, response)
 
             def log_message(self, _format: str, *_args: Any) -> None:
                 return
 
         return Handler
+
+
+def _parse_intent(payload: Any) -> tuple[Intent, str | None]:
+    """Validate an HTTP Intent representation and translate it to the contract."""
+    if not isinstance(payload, dict):
+        raise TypeError("request body must be a JSON object")
+
+    title = payload.get("title", "Intent")
+    goal = payload.get("goal")
+    if not isinstance(title, str):
+        raise TypeError("title must be a string")
+    if not isinstance(goal, str) or not goal.strip():
+        raise ValueError("goal must be a non-empty string")
+
+    sequences: dict[str, tuple[str, ...]] = {}
+    for field in ("requirements", "constraints", "acceptance"):
+        values = payload.get(field, [])
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) for value in values
+        ):
+            raise TypeError(f"{field} must be an array of strings")
+        sequences[field] = tuple(values)
+
+    intent_id = payload.get("intent_id")
+    if intent_id is not None and not isinstance(intent_id, str):
+        raise TypeError("intent_id must be a string")
+    provenance = payload.get("provenance", {})
+    if not isinstance(provenance, dict):
+        raise TypeError("provenance must be a JSON object")
+    if not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in provenance.items()
+    ):
+        raise TypeError("provenance keys and values must be strings")
+
+    execution_id = payload.get("execution_id")
+    if execution_id is not None and not isinstance(execution_id, str):
+        raise TypeError("execution_id must be a string")
+
+    intent = Intent(
+        title=title,
+        goal=goal,
+        requirements=sequences["requirements"],
+        constraints=sequences["constraints"],
+        acceptance=sequences["acceptance"],
+        intent_id=intent_id or str(uuid4()),
+        provenance=provenance,
+    )
+    return intent, execution_id or None
 
 
 def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
