@@ -29,6 +29,7 @@ class FixedWorker:
         return WorkerResult(
             worker_id=self.worker_id,
             status=self.status,
+            output={"answer": 42},
             evidence=({"source": "fixed-worker"},),
         )
 
@@ -75,7 +76,9 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert worker.contexts[1].evidence
     assert observed.status == "success"
     assert observed.result is not None
-    assert observed.result["worker_id"] == "fixed"
+    assert observed.result["worker_id"] == "arbiter"
+    assert observed.result["output"][0]["worker_id"] == "fixed"
+    assert observed.result["output"][0]["output"] == {"answer": 42}
     assert observed.result["status"] == "success"
     phases = [
         item["phase"]
