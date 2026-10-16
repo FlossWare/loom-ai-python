@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.evaluation import EvaluationRecord, EvaluationStatus
 from loom_ai.execution_state import ExecutionState, FileExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
@@ -81,6 +82,10 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert worker.contexts[1].intent == intent
     assert worker.contexts[1].evidence
     assert observed.status == "success"
+    assert observed.outcome_status == "success"
+    assert observed.lifecycle_status == "completed"
+    assert observed.latest_evaluation_status == "not_evaluated"
+    assert observed.evaluations == ()
     assert observed.result is not None
     assert observed.result["worker_id"] == "arbiter"
     assert observed.result["output"][0]["worker_id"] == "fixed"
@@ -141,6 +146,92 @@ def test_continuation_preserves_state_metadata_and_prior_structured_result(
     assert observed.result["output"][0]["output"] == {"answer": 42}
     assert observed.result["status"] == "success"
     assert observed.evidence[0] == {"source": "prior-stage"}
+
+
+
+def test_task_evaluation_is_separate_and_preserved_across_continuation(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+
+    def task_evaluator(
+        execution_id: str,
+        _intent: Intent,
+        result: WorkerResult,
+        phase: str,
+    ) -> EvaluationRecord:
+        status = (
+            EvaluationStatus.NOT_EVALUATED
+            if phase == "initial"
+            else EvaluationStatus.MET
+            if result.status is WorkerStatus.SUCCESS
+            else EvaluationStatus.NOT_MET
+        )
+        return EvaluationRecord(
+            execution_id=execution_id,
+            criteria_id="test-acceptance",
+            criteria_version="1",
+            evaluator_id="deterministic-test",
+            evaluator_version="1",
+            status=status,
+            evaluated_at="2026-10-16T12:00:00+00:00",
+            evidence=tuple(result.evidence),
+            provenance={"phase": phase},
+        )
+
+    store = FileExecutionStateStore(tmp_path)
+    orchestrator = Orchestrator(
+        build_arbiter(worker),
+        execution_store=store,
+        task_evaluator=task_evaluator,
+    )
+    orchestrator.submit(Intent(goal="evaluate after continuation"), execution_id="evaluated")
+    submission = orchestrator.continue_execution("evaluated")
+    observed = orchestrator.observe("evaluated")
+
+    assert submission.result.status is WorkerStatus.SUCCESS
+    assert observed.lifecycle_status == "completed"
+    assert observed.outcome_status == "success"
+    assert [item["status"] for item in observed.evaluations] == [
+        "not_evaluated",
+        "met",
+    ]
+    assert observed.latest_evaluation_status == "met"
+    assert observed.evaluations[-1]["criteria_id"] == "test-acceptance"
+    assert observed.evaluations[-1]["provenance"] == {"phase": "continued"}
+
+
+def test_task_evaluator_failure_does_not_rewrite_execution_result(tmp_path) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+
+    def broken_evaluator(
+        _execution_id: str,
+        _intent: Intent,
+        _result: WorkerResult,
+        _phase: str,
+    ) -> EvaluationRecord:
+        raise RuntimeError("evaluation backend unavailable")
+
+    store = FileExecutionStateStore(tmp_path)
+    orchestrator = Orchestrator(
+        build_arbiter(worker),
+        execution_store=store,
+        task_evaluator=broken_evaluator,
+    )
+
+    orchestrator.submit(Intent(goal="preserve execution despite evaluator failure"))
+    observed = store.load(next(iter(orchestrator._active), ""))
+
+    # The active map is cleared after submit; use the durable file identity.
+    assert observed is None
+    state_file = next(tmp_path.glob("*.json"))
+    execution_payload = json.loads(state_file.read_text(encoding="utf-8"))
+    assert execution_payload["status"] == "success"
+    assert execution_payload["lifecycle_status"] == "completed"
+    assert execution_payload["evaluations"] == []
+    assert execution_payload["metadata"]["evaluation_errors"] == [
+        {"phase": "initial", "error": "task evaluator failed: RuntimeError"}
+    ]
 
 
 class RecordingOrchestrator:
