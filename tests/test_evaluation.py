@@ -99,6 +99,7 @@ def test_evaluation_is_appended_without_rewriting_result_or_lifecycle(
     assert updated.evaluation.execution_id == "evaluated"
     assert updated.evaluation.intent_id == intent.intent_id
     assert updated.evaluation.evaluated_at is not None
+    assert updated.evaluation.result_reference is not None
     assert updated.evaluation.criteria == ("artifact exists",)
 
     second = orchestrator.record_evaluation(
@@ -119,6 +120,20 @@ def test_evaluation_rejects_wrong_execution_identity(tmp_path) -> None:
             EvaluationRecord(
                 status=EvaluationStatus.MET,
                 execution_id="execution-b",
+            ),
+        )
+
+
+def test_evaluation_rejects_a_reference_to_another_result(tmp_path) -> None:
+    orchestrator = build_orchestrator(tmp_path)
+    orchestrator.submit(Intent(goal="result identity check"), execution_id="result-bound")
+
+    with pytest.raises(ValueError, match="result_reference"):
+        orchestrator.record_evaluation(
+            "result-bound",
+            EvaluationRecord(
+                status=EvaluationStatus.MET,
+                result_reference="not-the-current-result",
             ),
         )
 
