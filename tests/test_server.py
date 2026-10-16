@@ -167,9 +167,7 @@ def test_server_rejects_overlarge_payload() -> None:
 def test_server_persists_and_continues_execution_state() -> None:
     with TemporaryDirectory() as state_dir:
 
-        def evaluate(
-            result: WorkerResult, context: WorkerContext
-        ) -> WorkerEvaluation:
+        def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
             if result.successful and context.state.get("phase") == "initial":
                 return WorkerEvaluation(
                     ArbiterDecision.INTERRUPT,
