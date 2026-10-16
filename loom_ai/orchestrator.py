@@ -212,9 +212,7 @@ def _json_value(value: Any) -> Any:
         return {key: _json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_value(item) for item in value]
-    raise TypeError(
-        f"unsupported durable result value: {type(value).__name__}"
-    )
+    raise TypeError(f"unsupported durable result value: {type(value).__name__}")
 
 
 def _exception_result(exc: Exception, *, phase: str) -> WorkerResult:
