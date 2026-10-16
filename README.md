@@ -40,6 +40,7 @@ The Python implementation currently provides:
 - Intent
 - Worker and WorkerContext/WorkerResult
 - Arbiter composition
+- Sequential multi-worker arbitration pipelines with context-preserving stage handoffs
 - provider-neutral ModelProvider boundary
 - ModelWorker
 - deterministic FakeModelProvider
@@ -47,6 +48,12 @@ The Python implementation currently provides:
 - conformance-oriented tests and dogfood
 
 These are Python realizations. They do not define the underlying AI-domain contracts.
+
+The sequential pipeline executes every configured stage unless a selected result
+is cancelled. Each stage's evaluator selects one of its actual Worker Results;
+the next stage receives that structured result, prior stage results, accumulated
+evidence, and the original execution context. Worker contexts are isolated from
+nested mutable state changes by sibling Workers.
 
 ## Architectural boundary
 
