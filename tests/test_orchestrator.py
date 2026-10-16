@@ -116,7 +116,9 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
     try:
         request = Request(
             f"{base_url}/intents",
-            data=json.dumps({"goal": "delegate this", "execution_id": "exec-1"}).encode(),
+            data=json.dumps(
+                {"goal": "delegate this", "execution_id": "exec-1"}
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
