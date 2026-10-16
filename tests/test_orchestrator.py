@@ -62,7 +62,9 @@ def test_non_durable_execution_cannot_report_resumable_interrupt_as_success() ->
 
     assert submission.execution_id is None
     assert submission.result.status is WorkerStatus.FAILED
-    assert submission.result.metadata["termination_cause"] == "durable_state_unavailable"
+    assert (
+        submission.result.metadata["termination_cause"] == "durable_state_unavailable"
+    )
     assert submission.result.error == (
         "execution interrupted but durable state is not configured"
     )
