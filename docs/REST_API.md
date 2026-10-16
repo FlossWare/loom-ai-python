@@ -92,9 +92,14 @@ Cancellation responses include `cancellation_accepted` and
 accepted before active work has actually terminated.
 
 All current responses, including errors, use `Content-Type: application/json`.
-Error bodies use the legacy shape `{"error":"..."}`. They are not currently RFC
-9457 Problem Details. The API does not currently publish a vendor media type or
-media-type contract version.
+Error bodies preserve the legacy `error` field and add a stable machine-readable
+`category`. Categories include `request.invalid`,
+`request.payload_too_large`, `route.not_found`, `execution.not_found`,
+`execution.durability_unavailable`, `execution.identity_conflict`,
+`execution.not_resumable`, `execution.state_error`, `evaluation.invalid`,
+and `server.internal_error`. Clients should branch on `category`, not parse
+the human-readable message. Errors are not currently RFC 9457 Problem Details.
+The API does not currently publish a vendor media type or media-type contract version.
 
 ## Status and error behavior
 
@@ -128,8 +133,8 @@ The current binding has several gaps relative to the proposed common standard:
    `Accept` is not evaluated.
 2. **Request media type validation:** `Content-Type` is not checked before parsing
    JSON; unsupported media types are not rejected with 415.
-3. **Problem Details:** errors use the existing `{"error": ...}` JSON object,
-   not `application/problem+json`.
+3. **Problem Details:** errors now include stable `category` plus the legacy
+   `error` string, but do not yet use `application/problem+json`.
 4. **Schemas:** the request and response structures are documented here and tested
    behaviorally, but are not yet published as standalone machine-readable HTTP
    schemas.

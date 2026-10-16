@@ -99,7 +99,9 @@ def test_server_rejects_intent_without_goal() -> None:
         except HTTPError as exc:
             assert exc.code == 400
             assert exc.headers.get_content_type() == "application/json"
-            assert "error" in json.load(exc)
+            payload = json.load(exc)
+            assert payload["error"]
+            assert payload["category"] == "request.invalid"
         else:
             raise AssertionError("expected HTTP 400")
     finally:
@@ -152,7 +154,9 @@ def test_server_rejects_overlarge_payload() -> None:
         except HTTPError as exc:
             assert exc.code == 413
             assert exc.headers.get_content_type() == "application/json"
-            assert "error" in json.load(exc)
+            payload = json.load(exc)
+            assert payload["error"]
+            assert payload["category"] == "request.payload_too_large"
         except URLError:
             # Server closed connection early upon detecting over-sized header/payload
             pass

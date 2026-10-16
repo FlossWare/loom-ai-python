@@ -224,6 +224,7 @@ def test_http_terminal_continuation_returns_conflict_without_mutation(
         assert captured.value.code == 409
         error = json.load(captured.value)
         assert error["execution_id"] == "terminal-http-execution"
+        assert error["category"] == "execution.not_resumable"
         assert "not resumable" in error["error"]
 
         with urlopen(f"{base_url}/executions/terminal-http-execution") as response:
@@ -379,7 +380,9 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
             urlopen(f"{base_url}/executions/missing")
         except HTTPError as exc:
             assert exc.code == 404
-            assert json.load(exc)["error"] == "execution not found"
+            payload = json.load(exc)
+            assert payload["error"] == "execution not found"
+            assert payload["category"] == "execution.not_found"
         else:
             raise AssertionError("expected missing execution to return HTTP 404")
 
@@ -459,6 +462,7 @@ def test_http_duplicate_execution_id_returns_conflict_without_rerunning(
         assert captured.value.code == 409
         conflict = json.load(captured.value)
         assert conflict["execution_id"] == "http-stable-execution"
+        assert conflict["category"] == "execution.identity_conflict"
         assert "execution already exists" in conflict["error"]
         assert len(worker.contexts) == 1
     finally:

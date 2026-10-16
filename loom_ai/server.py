@@ -142,24 +142,43 @@ class LoomServer:
                     return
                 if request_path.startswith("/executions/"):
                     execution_id = unquote(request_path.removeprefix("/executions/"))
-                    if not execution_id or not owner.orchestrator.durable_enabled:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    if not execution_id:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("route.not_found", "not found"),
+                        )
+                        return
+                    if not owner.orchestrator.durable_enabled:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.durability_unavailable",
+                                "durable execution state is not configured",
+                            ),
+                        )
                         return
                     try:
                         execution = owner.orchestrator.observe(execution_id)
                     except KeyError:
                         self._send(
-                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.not_found", "execution not found"
+                            ),
                         )
                         return
                     except ExecutionStateError as exc:
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("execution.state_error", str(exc)),
                         )
                         return
                     self._send(HTTPStatus.OK, _execution_payload(execution))
                     return
-                self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                self._send(
+                    HTTPStatus.NOT_FOUND,
+                    _error_payload("route.not_found", "not found"),
+                )
 
             def do_POST(self) -> None:  # noqa: N802
                 request_path = urlsplit(self.path).path
@@ -172,8 +191,20 @@ class LoomServer:
                         .strip("/")
                     )
                     execution_id = unquote(execution_id)
-                    if not execution_id or not owner.orchestrator.durable_enabled:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    if not execution_id:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("route.not_found", "not found"),
+                        )
+                        return
+                    if not owner.orchestrator.durable_enabled:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.durability_unavailable",
+                                "durable execution state is not configured",
+                            ),
+                        )
                         return
                     try:
                         length = int(self.headers.get("Content-Length", "0"))
@@ -182,7 +213,9 @@ class LoomServer:
                         if length > MAX_PAYLOAD_BYTES:
                             self._send(
                                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                                {"error": "payload too large"},
+                                _error_payload(
+                                    "request.payload_too_large", "payload too large"
+                                ),
                             )
                             return
                         raw_body = self.rfile.read(length).decode("utf-8")
@@ -227,7 +260,10 @@ class LoomServer:
                             provenance=provenance,
                         )
                     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                        self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.BAD_REQUEST,
+                            _error_payload("request.invalid", str(exc)),
+                        )
                         return
                     try:
                         execution = owner.orchestrator.record_evaluation(
@@ -235,15 +271,22 @@ class LoomServer:
                         )
                     except KeyError:
                         self._send(
-                            HTTPStatus.NOT_FOUND, {"error": "execution not found"}
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.not_found", "execution not found"
+                            ),
                         )
                         return
                     except (TypeError, ValueError) as exc:
-                        self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.BAD_REQUEST,
+                            _error_payload("evaluation.invalid", str(exc)),
+                        )
                         return
                     except ExecutionStateError as exc:
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("execution.state_error", str(exc)),
                         )
                         return
                     self._send(HTTPStatus.OK, _execution_payload(execution))
@@ -258,8 +301,20 @@ class LoomServer:
                         .strip("/")
                     )
                     execution_id = unquote(execution_id)
-                    if not execution_id or not owner.orchestrator.durable_enabled:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    if not execution_id:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("route.not_found", "not found"),
+                        )
+                        return
+                    if not owner.orchestrator.durable_enabled:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.durability_unavailable",
+                                "durable execution state is not configured",
+                            ),
+                        )
                         return
                     try:
                         length = int(self.headers.get("Content-Length", "0"))
@@ -268,7 +323,9 @@ class LoomServer:
                         if length > MAX_PAYLOAD_BYTES:
                             self._send(
                                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                                {"error": "payload too large"},
+                                _error_payload(
+                                    "request.payload_too_large", "payload too large"
+                                ),
                             )
                             return
                         raw_body = self.rfile.read(length).decode("utf-8")
@@ -279,7 +336,10 @@ class LoomServer:
                         if not isinstance(reason, str) or not reason.strip():
                             raise ValueError("reason must be a non-empty string")
                     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                        self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.BAD_REQUEST,
+                            _error_payload("request.invalid", str(exc)),
+                        )
                         return
                     try:
                         cancellation = owner.orchestrator.cancel(
@@ -287,11 +347,15 @@ class LoomServer:
                             reason=reason,
                         )
                     except KeyError as exc:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("execution.not_found", str(exc)),
+                        )
                         return
                     except ExecutionStateError as exc:
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("execution.state_error", str(exc)),
                         )
                         return
                     response = _execution_payload(cancellation.execution)
@@ -309,28 +373,49 @@ class LoomServer:
                         .strip("/")
                     )
                     execution_id = unquote(execution_id)
-                    if not execution_id or not owner.orchestrator.durable_enabled:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    if not execution_id:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("route.not_found", "not found"),
+                        )
+                        return
+                    if not owner.orchestrator.durable_enabled:
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload(
+                                "execution.durability_unavailable",
+                                "durable execution state is not configured",
+                            ),
+                        )
                         return
                     try:
                         submission = owner.orchestrator.continue_execution(execution_id)
                     except ExecutionNotResumableError as exc:
                         self._send(
                             HTTPStatus.CONFLICT,
-                            {"error": str(exc), "execution_id": execution_id},
+                            _error_payload(
+                                "execution.not_resumable",
+                                str(exc),
+                                execution_id=execution_id,
+                            ),
                         )
                         return
                     except KeyError as exc:
-                        self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+                        self._send(
+                            HTTPStatus.NOT_FOUND,
+                            _error_payload("execution.not_found", str(exc)),
+                        )
                         return
                     except ExecutionStateError as exc:
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("execution.state_error", str(exc)),
                         )
                         return
                     except Exception as exc:  # pragma: no cover
                         self._send(
-                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            _error_payload("server.internal_error", str(exc)),
                         )
                         return
                     self._send(
@@ -343,7 +428,10 @@ class LoomServer:
                     return
 
                 if request_path != "/intents":
-                    self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    self._send(
+                        HTTPStatus.NOT_FOUND,
+                        _error_payload("route.not_found", "not found"),
+                    )
                     return
 
                 try:
@@ -356,7 +444,9 @@ class LoomServer:
                     if length > MAX_PAYLOAD_BYTES:
                         self._send(
                             HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                            {"error": "payload too large"},
+                            _error_payload(
+                                "request.payload_too_large", "payload too large"
+                            ),
                         )
                         return
 
@@ -368,7 +458,10 @@ class LoomServer:
                     ):
                         requested_execution_id = str(uuid4())
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                    self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error_payload("request.invalid", str(exc)),
+                    )
                     return
 
                 try:
@@ -380,14 +473,15 @@ class LoomServer:
                 except ExecutionAlreadyExistsError as exc:
                     self._send(
                         HTTPStatus.CONFLICT,
-                        {
-                            "error": str(exc),
-                            "execution_id": requested_execution_id,
-                        },
+                        _error_payload(
+                            "execution.identity_conflict",
+                            str(exc),
+                            execution_id=requested_execution_id,
+                        ),
                     )
                     return
                 except Exception as exc:  # pragma: no cover
-                    error_payload = {"error": str(exc)}
+                    error_payload = _error_payload("server.internal_error", str(exc))
                     if (
                         owner.orchestrator.durable_enabled
                         and requested_execution_id is not None
@@ -499,6 +593,11 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
         "evaluation": EvaluationRecord().to_dict(),
         "result": structured_result,
     }
+
+
+def _error_payload(category: str, message: str, **details: Any) -> dict[str, Any]:
+    """Build a backward-compatible error body with a stable machine category."""
+    return {"category": category, "error": message, **details}
 
 
 def _json_default(value: Any) -> Any:
