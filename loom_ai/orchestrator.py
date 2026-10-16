@@ -1,22 +1,31 @@
-"""Application service for Loom execution lifecycle and durable state.
+"""Application-facing orchestration service for Loom execution.
 
-Transport adapters translate requests into domain objects and delegate here.
-The service is the single owner of Arbiter invocation and execution persistence.
+HTTP, MCP, and CLI/TUI adapters delegate through this boundary. The
+language-neutral Orchestrator semantics are defined by FlossWare/loom-ai; this
+module is the Python realization.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from uuid import uuid4
+
 from loom_ai.arbiter import Arbiter
-from loom_ai.execution_state import (
-    ExecutionState,
-    ExecutionStateStore,
-)
+from loom_ai.execution_state import ExecutionState, ExecutionStateStore
 from loom_ai.intent import Intent
-from loom_ai.worker import WorkerContext, WorkerResult
+from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+
+
+@dataclass(frozen=True)
+class OrchestratorSubmission:
+    """Result of submitting or continuing an execution."""
+
+    execution_id: str | None
+    result: WorkerResult
 
 
 class Orchestrator:
-    """Own submission, observation, continuation, and durable lifecycle state."""
+    """Own execution invocation, durable lifecycle, and observable state."""
 
     def __init__(
         self,
@@ -24,61 +33,94 @@ class Orchestrator:
         *,
         execution_store: ExecutionStateStore | None = None,
     ) -> None:
-        self._arbiter = arbiter
-        self._execution_store = execution_store
+        self.arbiter = arbiter
+        self.execution_store = execution_store
+
+    @property
+    def durable_enabled(self) -> bool:
+        """Whether durable execution observation and continuation are available."""
+        return self.execution_store is not None
 
     @property
     def durable(self) -> bool:
-        """Whether this service can persist and observe execution identities."""
-        return self._execution_store is not None
+        """Compatibility alias for durable_enabled."""
+        return self.durable_enabled
 
     def execute(self, intent: Intent) -> WorkerResult:
-        """Execute an Intent without creating a durable execution record."""
-        return self._arbiter.execute(WorkerContext(intent=intent))
+        """Execute an Intent through the configured Arbiter."""
+        return self.arbiter.execute(WorkerContext(intent=intent))
 
-    def submit(self, intent: Intent, execution_id: str) -> WorkerResult:
-        """Submit an Intent, persisting lifecycle state when a store is configured."""
-        if self._execution_store is None:
-            return self.execute(intent)
+    def submit(
+        self,
+        intent: Intent,
+        *,
+        execution_id: str | None = None,
+    ) -> OrchestratorSubmission:
+        """Submit an Intent and persist lifecycle state when configured."""
+        if self.execution_store is None:
+            return OrchestratorSubmission(None, self.execute(intent))
 
-        self._execution_store.save(
+        actual_id = execution_id or str(uuid4())
+        self.execution_store.save(
             ExecutionState(
-                execution_id=execution_id,
+                execution_id=actual_id,
                 intent=intent,
+                state={"phase": "initial"},
                 status="running",
                 metadata={"phase": "initial"},
             )
         )
-        result = self.execute(intent)
-        self._execution_store.save(
-            self._state_from_result(execution_id, intent, result, phase="initial")
+        try:
+            result = self.execute(intent)
+        except Exception as exc:
+            failure = _exception_result(exc, phase="initial")
+            self.execution_store.save(
+                _state_from_result(actual_id, intent, failure, phase="initial")
+            )
+            raise
+
+        self.execution_store.save(
+            _state_from_result(actual_id, intent, result, phase="initial")
         )
-        return result
+        return OrchestratorSubmission(actual_id, result)
 
     def observe(self, execution_id: str) -> ExecutionState:
-        """Return durable state for an execution or raise KeyError when absent."""
-        store = self._require_store()
-        execution = store.load(execution_id)
+        """Return durable execution state through the application boundary."""
+        if self.execution_store is None:
+            raise RuntimeError("durable execution state is not configured")
+        execution = self.execution_store.load(execution_id)
         if execution is None:
             raise KeyError(f"execution not found: {execution_id}")
         return execution
 
-    def continue_execution(self, execution_id: str) -> WorkerResult:
-        """Resume execution from persisted domain state and append new evidence."""
-        store = self._require_store()
-        execution = store.load(execution_id)
-        if execution is None:
-            raise KeyError(f"execution not found: {execution_id}")
-
+    def continue_execution(self, execution_id: str) -> OrchestratorSubmission:
+        """Continue an execution from its persisted context and evidence."""
+        execution = self.observe(execution_id)
         context = WorkerContext(
             intent=execution.intent,
             state=execution.state,
             evidence=execution.evidence,
             metadata=execution.metadata,
         )
-        result = self._arbiter.execute(context)
-        store.save(
-            self._state_from_result(
+        try:
+            result = self.arbiter.execute(context)
+        except Exception as exc:
+            failure = _exception_result(exc, phase="continued")
+            assert self.execution_store is not None
+            self.execution_store.save(
+                _state_from_result(
+                    execution_id,
+                    execution.intent,
+                    failure,
+                    phase="continued",
+                    prior=execution,
+                )
+            )
+            raise
+
+        assert self.execution_store is not None
+        self.execution_store.save(
+            _state_from_result(
                 execution_id,
                 execution.intent,
                 result,
@@ -86,49 +128,60 @@ class Orchestrator:
                 prior=execution,
             )
         )
-        return result
+        return OrchestratorSubmission(execution_id, result)
 
-    def _require_store(self) -> ExecutionStateStore:
-        if self._execution_store is None:
-            raise RuntimeError("durable execution state is not configured")
-        return self._execution_store
 
-    @staticmethod
-    def _state_from_result(
-        execution_id: str,
-        intent: Intent,
-        result: WorkerResult,
-        *,
-        phase: str,
-        prior: ExecutionState | None = None,
-    ) -> ExecutionState:
-        """Build durable observable state for one execution phase."""
-        prior_evidence = prior.evidence if prior is not None else ()
-        evidence = (
-            prior_evidence
-            + (
-                {
-                    "type": "execution-phase",
-                    "phase": phase,
-                    "execution_id": execution_id,
-                },
-            )
-            + result.evidence
-        )
-        return ExecutionState(
-            execution_id=execution_id,
-            intent=intent,
-            state={
-                "last_worker": result.worker_id,
-                "last_status": result.status.value,
+def _state_from_result(
+    execution_id: str,
+    intent: Intent,
+    result: WorkerResult,
+    *,
+    phase: str,
+    prior: ExecutionState | None = None,
+) -> ExecutionState:
+    """Build durable state without conflating cancellation with failure."""
+    prior_evidence = prior.evidence if prior is not None else ()
+    evidence = (
+        prior_evidence
+        + ({"type": "execution-phase", "phase": phase, "execution_id": execution_id},)
+        + result.evidence
+    )
+    status = {
+        WorkerStatus.SUCCESS: "success",
+        WorkerStatus.FAILED: "failed",
+        WorkerStatus.CANCELLED: "cancelled",
+    }[result.status]
+    return ExecutionState(
+        execution_id=execution_id,
+        intent=intent,
+        state={
+            "last_worker": result.worker_id,
+            "last_status": result.status.value,
+            "phase": phase,
+        },
+        evidence=evidence,
+        status=status,
+        metadata={
+            "phase": phase,
+            "worker_id": result.worker_id,
+            "result_metadata": dict(result.metadata),
+        },
+    )
+
+
+def _exception_result(exc: Exception, *, phase: str) -> WorkerResult:
+    """Create safe durable failure evidence before propagating an exception."""
+    exception_type = type(exc).__name__
+    return WorkerResult(
+        worker_id="orchestrator",
+        status=WorkerStatus.FAILED,
+        error=f"execution raised {exception_type}",
+        evidence=(
+            {
+                "type": "execution-exception",
                 "phase": phase,
+                "exception_type": exception_type,
             },
-            evidence=evidence,
-            # Preserve the terminal domain status, especially cancellation.
-            status=result.status.value,
-            metadata={
-                "phase": phase,
-                "worker_id": result.worker_id,
-                "result_metadata": dict(result.metadata),
-            },
-        )
+        ),
+        metadata={"exception_type": exception_type},
+    )
