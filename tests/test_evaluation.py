@@ -124,7 +124,7 @@ def test_evaluation_rejects_wrong_execution_identity(tmp_path) -> None:
         )
 
 
-def test_continuation_invalidates_current_evaluation_but_keeps_history(
+def test_terminal_continuation_preserves_committed_evaluation_history(
     tmp_path,
 ) -> None:
     orchestrator = build_orchestrator(tmp_path)
@@ -133,12 +133,15 @@ def test_continuation_invalidates_current_evaluation_but_keeps_history(
         "continued",
         EvaluationRecord(status=EvaluationStatus.MET, criteria=("artifact exists",)),
     )
+    before = orchestrator.observe("continued")
 
-    orchestrator.continue_execution("continued")
+    with pytest.raises(RuntimeError, match="execution is not resumable"):
+        orchestrator.continue_execution("continued")
     observed = orchestrator.observe("continued")
 
+    assert observed == before
     assert observed.lifecycle == "completed"
-    assert observed.evaluation.status is EvaluationStatus.NOT_EVALUATED
+    assert observed.evaluation.status is EvaluationStatus.MET
     assert len(observed.evaluations) == 1
     assert observed.evaluations[0].status is EvaluationStatus.MET
 
