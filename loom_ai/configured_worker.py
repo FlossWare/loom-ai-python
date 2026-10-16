@@ -50,7 +50,7 @@ class ConfiguredModelWorker:
         instruction_block = (
             f"Worker purpose: {self.configuration.purpose}\n"
             "Worker instructions:\n"
-            + "\n".join(f"- {instruction}" for instruction in self.configuration.instructions)
+            + "\n".join(\n                f"- {instruction}" for instruction in self.configuration.instructions\n            )
             + "\n\n"
         )
         configured_intent = replace(
