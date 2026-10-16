@@ -106,6 +106,9 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
     intent = Intent(goal="continue this execution", provenance={"source": "test"})
     orchestrator.submit(intent, execution_id="continuing-execution")
+    initial = orchestrator.observe("continuing-execution")
+    assert initial.lifecycle == "interrupted"
+    assert not initial.terminal
 
     submission = orchestrator.continue_execution("continuing-execution")
     observed = orchestrator.observe("continuing-execution")
@@ -114,6 +117,7 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert worker.contexts[1].intent == intent
     assert worker.contexts[1].evidence
     assert observed.status == "success"
+    assert observed.lifecycle == "completed"
     assert observed.result is not None
     assert observed.result["worker_id"] == "arbiter"
     assert observed.result["output"][0]["worker_id"] == "fixed"
