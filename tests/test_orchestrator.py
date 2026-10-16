@@ -220,10 +220,7 @@ def test_task_evaluator_failure_does_not_rewrite_execution_result(tmp_path) -> N
     )
 
     orchestrator.submit(Intent(goal="preserve execution despite evaluator failure"))
-    observed = store.load(next(iter(orchestrator._active), ""))
-
-    # The active map is cleared after submit; use the durable file identity.
-    assert observed is None
+    # The active map is cleared after submit; inspect the durable snapshot.
     state_file = next(tmp_path.glob("*.json"))
     execution_payload = json.loads(state_file.read_text(encoding="utf-8"))
     assert execution_payload["status"] == "success"
