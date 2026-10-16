@@ -44,6 +44,32 @@ def fail(message: str) -> None:
     raise SystemExit(f"FAIL: {message}")
 
 
+def build_crushrc(
+    *,
+    python: Path,
+    mcp_server: Path,
+    crush_data: Path,
+    loom_url: str,
+    provider_base_url: str,
+) -> str:
+    """Build an isolated Crush profile with an explicit model provider.
+
+    CRUSH_GLOBAL_DATA deliberately points at a temporary directory during
+    qualification, so the user's configured providers are not inherited.
+    Configure the local FlossWare OpenAI-compatible gateway explicitly in this
+    disposable project profile instead of launching Crush with no providers.
+    """
+    return (
+        "# Disposable real-repository Loom dogfood configuration.\\n"
+        f'option data-directory "{crush_data}"\\n'
+        f'provider add flossware --type openai-compat --base-url "{provider_base_url}"\\n'
+        'model add flossware/flossware --name "FlossWare" '
+        "--context-window 128000 --default-max-tokens 20000\\n"
+        f'mcp add loom --command "{python}" --args "{mcp_server}" '
+        f'--env LOOM_URL "{loom_url}" --timeout 30\\n'
+    )
+
+
 def run(
     command: list[str],
     *,
@@ -187,7 +213,16 @@ def main() -> int:
         description="Dogfood fresh Crush -> generic Loom MCP against real loom-ai"
     )
     parser.add_argument(
-        "--model", default=None, help="Optional Crush model passed to crush run"
+        "--model",
+        default=os.environ.get("FLOSSWARE_CRUSH_MODEL", "flossware/flossware"),
+        help="Crush model passed to crush run (default: local FlossWare gateway model)",
+    )
+    parser.add_argument(
+        "--provider-base-url",
+        default=os.environ.get(
+            "FLOSSWARE_CRUSH_BASE_URL", "http://127.0.0.1:8765/v1"
+        ),
+        help="OpenAI-compatible model gateway URL",
     )
     parser.add_argument(
         "--expect-failure",
@@ -257,10 +292,13 @@ def main() -> int:
 
         crush_data = temp_root / "crush-data"
         (repo / ".crushrc").write_text(
-            "# Disposable real-repository Loom dogfood configuration.\n"
-            f'option data-directory "{crush_data}"\n'
-            f'mcp add loom --command "{python}" --args "{mcp_server}" '
-            f'--env LOOM_URL "http://127.0.0.1:{server.port}" --timeout 30\n',
+            build_crushrc(
+                python=python,
+                mcp_server=mcp_server,
+                crush_data=crush_data,
+                loom_url=f"http://127.0.0.1:{server.port}",
+                provider_base_url=args.provider_base_url,
+            ),
             encoding="utf-8",
         )
 
