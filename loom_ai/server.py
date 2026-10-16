@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict, is_dataclass
+from datetime import datetime
 from enum import Enum
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +23,7 @@ from loom_ai.execution_state import (
     ExecutionStateStore,
 )
 from loom_ai.intent import Intent
-from loom_ai.orchestrator import Orchestrator
+from loom_ai.orchestrator import Orchestrator, parse_deadline
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
@@ -154,6 +155,56 @@ class LoomServer:
 
             def do_POST(self) -> None:  # noqa: N802
                 if self.path.startswith("/executions/") and self.path.endswith(
+                    "/cancel"
+                ):
+                    execution_id = (
+                        self.path.removeprefix("/executions/")
+                        .removesuffix("/cancel")
+                        .strip("/")
+                    )
+                    if not execution_id or not owner.orchestrator.durable_enabled:
+                        self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                        return
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                        if length < 0:
+                            raise ValueError("Content-Length must be non-negative")
+                        if length > MAX_PAYLOAD_BYTES:
+                            self._send(
+                                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                                {"error": "payload too large"},
+                            )
+                            return
+                        raw_body = self.rfile.read(length).decode("utf-8")
+                        payload = json.loads(raw_body) if raw_body else {}
+                        if not isinstance(payload, dict):
+                            raise TypeError("request body must be a JSON object")
+                        reason = payload.get("reason", "cancellation requested")
+                        if not isinstance(reason, str) or not reason.strip():
+                            raise ValueError("reason must be a non-empty string")
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                        return
+                    try:
+                        cancellation = owner.orchestrator.cancel(
+                            execution_id,
+                            reason=reason,
+                        )
+                    except KeyError as exc:
+                        self._send(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+                        return
+                    except ExecutionStateError as exc:
+                        self._send(
+                            HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+                        )
+                        return
+                    response = _execution_payload(cancellation.execution)
+                    response["cancellation_accepted"] = cancellation.accepted
+                    response["cancellation_pending"] = cancellation.pending
+                    self._send(HTTPStatus.OK, response)
+                    return
+
+                if self.path.startswith("/executions/") and self.path.endswith(
                     "/continue"
                 ):
                     execution_id = (
@@ -207,7 +258,7 @@ class LoomServer:
                         return
 
                     payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                    intent, requested_execution_id = _parse_intent(payload)
+                    intent, requested_execution_id, deadline = _parse_intent(payload)
                     if (
                         owner.orchestrator.durable_enabled
                         and requested_execution_id is None
@@ -221,6 +272,7 @@ class LoomServer:
                     submission = owner.orchestrator.submit(
                         intent,
                         execution_id=requested_execution_id,
+                        deadline=deadline,
                     )
                 except Exception as exc:  # pragma: no cover
                     error_payload = {"error": str(exc)}
@@ -243,7 +295,7 @@ class LoomServer:
         return Handler
 
 
-def _parse_intent(payload: Any) -> tuple[Intent, str | None]:
+def _parse_intent(payload: Any) -> tuple[Intent, str | None, datetime | None]:
     """Validate an HTTP Intent representation and translate it to the contract."""
     if not isinstance(payload, dict):
         raise TypeError("request body must be a JSON object")
@@ -279,6 +331,10 @@ def _parse_intent(payload: Any) -> tuple[Intent, str | None]:
     execution_id = payload.get("execution_id")
     if execution_id is not None and not isinstance(execution_id, str):
         raise TypeError("execution_id must be a string")
+    deadline_value = payload.get("deadline")
+    if deadline_value is not None and not isinstance(deadline_value, str):
+        raise TypeError("deadline must be an RFC 3339 timestamp")
+    deadline = parse_deadline(deadline_value)
 
     intent = Intent(
         title=title,
@@ -289,7 +345,7 @@ def _parse_intent(payload: Any) -> tuple[Intent, str | None]:
         intent_id=intent_id or str(uuid4()),
         provenance=provenance,
     )
-    return intent, execution_id or None
+    return intent, execution_id or None, deadline
 
 
 def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
