@@ -96,7 +96,14 @@ def test_mcp_stdio_protocol_with_external_process() -> None:
 def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
     with TemporaryDirectory() as state_dir:
 
-        def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        def evaluate(
+            result: WorkerResult, context: WorkerContext
+        ) -> WorkerEvaluation:
+            if result.successful and context.state.get("phase") == "initial":
+                return WorkerEvaluation(
+                    ArbiterDecision.INTERRUPT,
+                    reason="initial MCP phase complete",
+                )
             return WorkerEvaluation(
                 ArbiterDecision.COMPLETE,
                 reason="mcp e2e",
@@ -256,8 +263,13 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
 
         def build_server() -> LoomServer:
             def evaluate(
-                _result: WorkerResult, _context: WorkerContext
+                result: WorkerResult, context: WorkerContext
             ) -> WorkerEvaluation:
+                if result.successful and context.state.get("phase") == "initial":
+                    return WorkerEvaluation(
+                        ArbiterDecision.INTERRUPT,
+                        reason="waiting for process-boundary continuation",
+                    )
                 return WorkerEvaluation(
                     ArbiterDecision.COMPLETE,
                     reason="restart recovery",
