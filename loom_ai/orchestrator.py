@@ -224,7 +224,9 @@ class Orchestrator:
             if execution is None:
                 raise KeyError(f"execution not found: {execution_id}")
             if evaluation.execution_id not in (None, execution_id):
-                raise ValueError("evaluation execution_id does not match target execution")
+                raise ValueError(
+                    "evaluation execution_id does not match target execution"
+                )
             if evaluation.intent_id not in (None, execution.intent.intent_id):
                 raise ValueError("evaluation intent_id does not match execution Intent")
             if not execution.terminal or execution.result is None:
@@ -233,7 +235,9 @@ class Orchestrator:
             if result_reference is None:
                 raise ValueError("evaluation requires a terminal execution result")
             if evaluation.result_reference not in (None, result_reference):
-                raise ValueError("evaluation result_reference does not match current Result")
+                raise ValueError(
+                    "evaluation result_reference does not match current Result"
+                )
             record = replace(
                 evaluation,
                 result_reference=result_reference,
