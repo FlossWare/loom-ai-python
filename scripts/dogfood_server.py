@@ -9,6 +9,8 @@ repository-changing Worker, and a verification Worker.
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 from pathlib import Path
 
 from loom_ai import (
@@ -108,16 +110,27 @@ class RepositoryTaskWorker:
 
 
 class VerificationWorker:
-    """Run repository verification as an ordinary Loom Worker."""
+    """Run repository verification in an isolated child process."""
 
     worker_id = "verification"
 
     def execute(self, _context: WorkerContext) -> WorkerResult:
-        import pytest
-
         target = Path.cwd().resolve() / "tests" / "test_server.py"
         try:
-            return_code = pytest.main(["-q", str(target)])
+            completed = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", str(target)],
+                cwd=Path.cwd(),
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return WorkerResult(
+                worker_id=self.worker_id,
+                status=WorkerStatus.FAILED,
+                error="repository verification timed out",
+            )
         except OSError as exc:
             return WorkerResult(
                 worker_id=self.worker_id,
@@ -128,17 +141,19 @@ class VerificationWorker:
         return WorkerResult(
             worker_id=self.worker_id,
             status=WorkerStatus.SUCCESS
-            if return_code == 0
+            if completed.returncode == 0
             else WorkerStatus.FAILED,
-            output={"pytest_exit_code": int(return_code)},
+            output={"pytest_exit_code": completed.returncode},
             evidence=(
                 {
                     "worker": self.worker_id,
-                    "returncode": int(return_code),
+                    "returncode": completed.returncode,
                     "target": str(target),
                 },
             ),
-            error="" if return_code == 0 else "repository verification failed",
+            error=""
+            if completed.returncode == 0
+            else "repository verification failed",
         )
 
 
