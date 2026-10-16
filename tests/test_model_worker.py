@@ -179,4 +179,3 @@ def test_model_worker_rejects_contradictory_response_provenance() -> None:
 
         assert result.status is WorkerStatus.FAILED
         assert result.error == "model provider invocation failed"
-
