@@ -14,7 +14,7 @@ representation change ahead of that decision.
 | Method and path | Purpose | Success response |
 |---|---|---|
 | `GET /health` | Check transport availability | `200 application/json`, `{"status":"ok"}` |
-| `POST /intents` | Submit and execute an Intent | `200 application/json` with Worker Result fields; includes `execution_id` when a durable store is configured |
+| `POST /intents` | Submit and execute an Intent | `200 application/json` with Worker Result fields and accurate lifecycle; includes `execution_id` when a durable store is configured |
 | `GET /executions/{execution_id}` | Read durable execution state | `200 application/json` with execution identity, Intent identity, lifecycle/status, result, evidence, evaluation history, metadata, representation version, and provenance |
 | `POST /executions/{execution_id}/continue` | Resume an interrupted durable execution | `200 application/json` with the stable `execution_id` and Worker Result fields |
 | `POST /executions/{execution_id}/cancel` | Request cooperative cancellation | `200 application/json` with execution state and explicit `cancellation_accepted` / `cancellation_pending` flags |
@@ -72,7 +72,9 @@ Successful execution responses use JSON and include:
 - `metadata`
 
 When durable state is configured, submission and continuation responses also
-include `execution_id`. Execution lookup returns the durable state representation,
+include `execution_id`. Submission returns `lifecycle=interrupted` when the Arbiter
+explicitly pauses at a resumable boundary; it must not report that phase as
+completed merely because its Worker Result status is successful. Execution lookup returns the durable state representation,
 including the Intent identity and caller provenance. Lookup also exposes distinct
 lifecycle, legacy-compatible status, structured Result, and evaluation data.
 Legacy `status` describes the prior Worker outcome and is not proof that the task's

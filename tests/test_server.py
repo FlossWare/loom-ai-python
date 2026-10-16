@@ -201,6 +201,7 @@ def test_server_persists_and_continues_execution_state() -> None:
 
             execution_id = initial["execution_id"]
             assert initial["status"] == "success"
+            assert initial["lifecycle"] == "interrupted"
 
             with urlopen(f"{base_url}/executions/{execution_id}") as response:
                 persisted = json.load(response)
