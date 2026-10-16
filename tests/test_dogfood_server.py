@@ -32,9 +32,8 @@ def test_dogfood_profile_uses_durable_store_and_real_arbiter(
 
     assert isinstance(server, LoomServer)
     assert isinstance(server.orchestrator, Orchestrator)
-    assert server.orchestrator.durable
-    assert isinstance(server.orchestrator._execution_store, FileExecutionStateStore)
-    assert [worker.worker_id for worker in server.orchestrator._arbiter.workers] == [
+    assert isinstance(server.execution_store, FileExecutionStateStore)
+    assert [worker.worker_id for worker in server.arbiter.workers] == [
         "repository-task",
         "verification",
     ]
