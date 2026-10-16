@@ -79,9 +79,7 @@ class SequentialArbitrationPipeline:
                 worker.execute(self._snapshot(stage_context))
                 for worker in stage.workers
             )
-            evaluation = stage.evaluator(
-                worker_results, self._snapshot(stage_context)
-            )
+            evaluation = stage.evaluator(worker_results, self._snapshot(stage_context))
             selected = evaluation.selected_result
             if not any(selected is result for result in worker_results):
                 raise ValueError(
@@ -122,7 +120,11 @@ class SequentialArbitrationPipeline:
                     pipeline_stage_id=next_stage.stage_id,
                 ).with_evidence(
                     *(
-                        [dict(item) for result in worker_results for item in result.evidence]
+                        [
+                            dict(item)
+                            for result in worker_results
+                            for item in result.evidence
+                        ]
                         + [stage_summary]
                     )
                 )
@@ -131,9 +133,7 @@ class SequentialArbitrationPipeline:
         summaries = [
             {
                 "stage_id": record["stage_id"],
-                "worker_ids": [
-                    result.worker_id for result in record["worker_results"]
-                ],
+                "worker_ids": [result.worker_id for result in record["worker_results"]],
                 "selected_worker_id": record["selected_result"].worker_id,
                 "selected_status": record["selected_result"].status.value,
                 "reason": record["reason"],
