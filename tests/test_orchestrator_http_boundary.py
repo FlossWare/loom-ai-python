@@ -161,3 +161,36 @@ def test_http_exposes_cancelled_execution_status(tmp_path) -> None:
             instance.shutdown()
             instance.server_close()
             thread.join(timeout=2)
+
+
+def test_http_reports_orchestrator_value_error_as_server_failure() -> None:
+    from urllib.error import HTTPError
+
+    class FailingOrchestrator(RecordingOrchestrator):
+        def submit(
+            self, intent: Intent, *, execution_id: str | None = None
+        ) -> OrchestratorSubmission:
+            raise ValueError("execution failed inside the application service")
+
+    server = LoomServer(orchestrator=FailingOrchestrator(), port=0)
+    instance = _HTTPServer((server.host, server.port), server._handler_factory())
+    thread = Thread(target=instance.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = Request(
+            f"http://{server.host}:{instance.server_address[1]}/intents",
+            data=json.dumps({"goal": "valid request"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urlopen(request)
+        except HTTPError as exc:
+            assert exc.code == 500
+            assert "error" in json.load(exc)
+        else:
+            raise AssertionError("expected HTTP 500 for application failure")
+    finally:
+        instance.shutdown()
+        instance.server_close()
+        thread.join(timeout=2)
