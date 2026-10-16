@@ -73,13 +73,37 @@ class ExecutionState:
 
     @property
     def evaluation(self) -> EvaluationRecord:
-        """Latest evaluation, or an explicit not-evaluated record when absent."""
-        return self.evaluations[-1] if self.evaluations else EvaluationRecord()
+        """Evaluation for the current result, or not-evaluated if none applies."""
+        reference = execution_result_reference(self)
+        if reference is None:
+            return EvaluationRecord()
+        if not self.evaluations:
+            return EvaluationRecord(result_reference=reference)
+        latest = self.evaluations[-1]
+        if (
+            latest.result_reference is not None
+            and latest.result_reference != reference
+        ):
+            return EvaluationRecord(result_reference=reference)
+        return latest
 
     @property
     def terminal(self) -> bool:
         """Whether the snapshot represents a terminal execution lifecycle."""
         return self.lifecycle == "completed"
+
+
+def execution_result_reference(execution: ExecutionState) -> str | None:
+    """Return a stable reference to this execution phase's structured Result."""
+    if execution.result is None:
+        return None
+    payload = {
+        "execution_id": execution.execution_id,
+        "phase": execution.metadata.get("phase"),
+        "result": execution.result,
+    }
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
 
 
 class ExecutionStateStore(Protocol):
