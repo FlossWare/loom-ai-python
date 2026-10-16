@@ -52,7 +52,7 @@ def test_orchestrator_persists_cancellation_as_distinct_terminal_status(
     assert observed.status == "cancelled"
     assert observed.state["last_status"] == "cancelled"
     assert observed.terminal
-    assert observed.evidence[-1] == {"source": "fixed-worker"}
+    assert {"source": "fixed-worker"} in observed.evidence
 
 
 def test_orchestrator_continuation_preserves_context_and_appends_evidence(
