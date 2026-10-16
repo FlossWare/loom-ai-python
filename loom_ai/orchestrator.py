@@ -30,6 +30,10 @@ from loom_ai.worker import (
 )
 
 
+class ExecutionAlreadyExistsError(RuntimeError):
+    """Raised when a submission reuses an existing durable execution identity."""
+
+
 @dataclass(frozen=True)
 class OrchestratorSubmission:
     """Result of submitting or continuing an execution."""
@@ -89,15 +93,17 @@ class Orchestrator:
             if self.execution_store is None:
                 return OrchestratorSubmission(None, result)
             actual_id = execution_id or str(uuid4())
-            self.execution_store.save(
-                _state_from_result(
-                    actual_id,
-                    intent,
-                    result,
-                    phase="initial",
-                    deadline=absolute_deadline,
+            with self._lock:
+                self._ensure_execution_id_available(actual_id)
+                self.execution_store.save(
+                    _state_from_result(
+                        actual_id,
+                        intent,
+                        result,
+                        phase="initial",
+                        deadline=absolute_deadline,
+                    )
                 )
-            )
             return OrchestratorSubmission(actual_id, result)
 
         if self.execution_store is None:
@@ -109,6 +115,7 @@ class Orchestrator:
         actual_id = execution_id or str(uuid4())
         token = CancellationToken()
         with self._lock:
+            self._ensure_execution_id_available(actual_id)
             metadata: dict = {"phase": "initial"}
             if absolute_deadline is not None:
                 metadata["deadline"] = absolute_deadline.isoformat()
@@ -554,6 +561,14 @@ class Orchestrator:
                 cancellation_token=token,
             )
         )
+
+    def _ensure_execution_id_available(self, execution_id: str) -> None:
+        """Reject duplicate durable identities before replacing state or work."""
+        store = self._require_store()
+        if store.load(execution_id) is not None:
+            raise ExecutionAlreadyExistsError(
+                f"execution already exists: {execution_id}"
+            )
 
     def _require_store(self) -> ExecutionStateStore:
         if self.execution_store is None:

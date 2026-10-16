@@ -15,6 +15,7 @@ from loom_ai.execution_state import ExecutionState, FileExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
     CancellationResult,
+    ExecutionAlreadyExistsError,
     Orchestrator,
     OrchestratorSubmission,
 )
@@ -63,6 +64,32 @@ def test_orchestrator_persists_cancellation_as_distinct_terminal_status(
     assert observed.state["last_status"] == "cancelled"
     assert observed.terminal
     assert {"source": "fixed-worker"} in observed.evidence
+
+
+def test_duplicate_execution_id_is_rejected_without_replacing_prior_result(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    store = FileExecutionStateStore(tmp_path)
+    orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
+    original_intent = Intent(goal="original accepted work")
+    first = orchestrator.submit(original_intent, execution_id="stable-execution")
+
+    with pytest.raises(
+        ExecutionAlreadyExistsError,
+        match="execution already exists: stable-execution",
+    ):
+        orchestrator.submit(
+            Intent(goal="different work must not replace it"),
+            execution_id="stable-execution",
+        )
+
+    observed = orchestrator.observe("stable-execution")
+    assert first.result.status is WorkerStatus.SUCCESS
+    assert len(worker.contexts) == 1
+    assert observed.intent == original_intent
+    assert observed.result is not None
+    assert observed.result["output"][0]["output"] == {"answer": 42}
 
 
 def test_orchestrator_continuation_preserves_context_and_appends_evidence(
@@ -273,6 +300,51 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
             "continue",
         ]
         assert service.calls[0] == ("submit", "delegate this", "exec-1")
+    finally:
+        server.close()
+        thread.join(timeout=2)
+
+
+def test_http_duplicate_execution_id_returns_conflict_without_rerunning(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    server = LoomServer(
+        build_arbiter(worker),
+        port=0,
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    instance = server.start()
+    thread = Thread(target=instance.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://{server.host}:{server.port}/intents"
+    payload = json.dumps(
+        {"goal": "execute once", "execution_id": "http-stable-execution"}
+    ).encode()
+    try:
+        request = Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request) as response:
+            first = json.load(response)
+        assert first["execution_id"] == "http-stable-execution"
+
+        duplicate = Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as captured:
+            urlopen(duplicate)
+        assert captured.value.code == 409
+        conflict = json.load(captured.value)
+        assert conflict["execution_id"] == "http-stable-execution"
+        assert "execution already exists" in conflict["error"]
+        assert len(worker.contexts) == 1
     finally:
         server.close()
         thread.join(timeout=2)
