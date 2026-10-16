@@ -73,7 +73,9 @@ def test_submit_persists_execution_identity_state_and_evidence(tmp_path: Path) -
     )
 
 
-def test_continue_preserves_execution_identity_and_phase_history(tmp_path: Path) -> None:
+def test_continue_preserves_execution_identity_and_phase_history(
+    tmp_path: Path,
+) -> None:
     orchestrator = make_orchestrator(tmp_path / "state", PhaseWorker())
     initial = orchestrator.submit(
         Intent(goal="run then continue"),
