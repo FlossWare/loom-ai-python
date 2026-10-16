@@ -122,9 +122,7 @@ class Arbiter:
                 return self._result(outputs, evidence, "complete", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.INTERRUPT:
-                return self._result(
-                    outputs, evidence, "interrupted", evaluation.reason
-                )
+                return self._result(outputs, evidence, "interrupted", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.RETRY:
                 # max_retries counts retries after the initial attempt. Once
