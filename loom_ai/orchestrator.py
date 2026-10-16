@@ -463,7 +463,9 @@ class Orchestrator:
             ):
                 result = _cancelled_result(result, token)
             elif control_cause == "deadline_exceeded":
-                result = _deadline_result(evidence=result.evidence, output=result.output)
+                result = _deadline_result(
+                    evidence=result.evidence, output=result.output
+                )
             latest = store.load(execution_id) or execution
             store.save(
                 _state_from_result(
