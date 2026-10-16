@@ -96,7 +96,10 @@ class ConfiguredModelWorker:
                         self.worker_id,
                         "deadline exceeded",
                         tuple(evidence) + ({"type": "deadline-exceeded"},),
-                        {"termination_cause": "deadline_exceeded", "attempts": attempt - 1},
+                        {
+                            "termination_cause": "deadline_exceeded",
+                            "attempts": attempt - 1,
+                        },
                     )
                 remaining = min(remaining, deadline_remaining)
 
