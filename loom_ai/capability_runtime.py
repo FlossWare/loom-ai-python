@@ -21,7 +21,10 @@ def invoke_capability(
     arguments: Mapping[str, Any],
     *,
     bindings: Mapping[str, CapabilityBinding],
-    approval_granted: bool = False,
+    approval_authorizer: Callable[
+        [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
+    ]
+    | None = None,
 ) -> Any:
     """Invoke one capability only through a trusted runtime binding.
 
@@ -35,8 +38,17 @@ def invoke_capability(
         raise CapabilityInvocationError("capability reference must be non-empty")
     if capability_ref not in configuration.capabilities:
         raise CapabilityInvocationError("capability is not authorized by Worker config")
-    if configuration.approval_required and approval_granted is not True:
-        raise CapabilityInvocationError("capability invocation requires explicit approval")
+    if configuration.approval_required:
+        if approval_authorizer is None:
+            raise CapabilityInvocationError(
+                "capability invocation requires an approval authorizer"
+            )
+        try:
+            approved = approval_authorizer(configuration, capability_ref, dict(arguments))
+        except Exception as exc:
+            raise CapabilityInvocationError("capability approval check failed") from exc
+        if approved is not True:
+            raise CapabilityInvocationError("capability invocation was not approved")
     binding = bindings.get(capability_ref)
     if binding is None or not callable(binding):
         raise CapabilityInvocationError("authorized capability has no runtime binding")
