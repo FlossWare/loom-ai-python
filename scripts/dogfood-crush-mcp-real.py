@@ -49,6 +49,7 @@ def run(
     *,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -57,6 +58,7 @@ def run(
         check=False,
         text=True,
         capture_output=True,
+        timeout=timeout,
     )
 
 
@@ -192,7 +194,15 @@ def main() -> int:
         action="store_true",
         help="Run the deliberate verification-failure qualification path",
     )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=900,
+        help="Maximum time to allow the Crush agent run (default: 900 seconds)",
+    )
     args = parser.parse_args()
+    if args.timeout_seconds <= 0:
+        fail("--timeout-seconds must be greater than zero")
 
     crush = shutil.which("crush")
     git = shutil.which("git")
@@ -315,7 +325,17 @@ Execution protocol:
         print(f"Task: {ISSUE} ({TARGET_FILE})")
 
         try:
-            completed = run(command, cwd=repo, env=env)
+            try:
+                completed = run(
+                    command,
+                    cwd=repo,
+                    env=env,
+                    timeout=args.timeout_seconds,
+                )
+            except subprocess.TimeoutExpired:
+                fail(
+                    f"Crush exceeded --timeout-seconds={args.timeout_seconds:g}"
+                )
             print("\n==> Crush stdout")
             print(completed.stdout.rstrip())
             if completed.stderr.strip():
