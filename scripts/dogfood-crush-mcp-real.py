@@ -196,7 +196,12 @@ class VerificationWorker:
         )
 
 
-def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
+    if result.successful and context.state.get("phase") == "initial":
+        return WorkerEvaluation(
+            ArbiterDecision.INTERRUPT,
+            reason="initial checkpoint verified; waiting for external agent work",
+        )
     if result.successful:
         return WorkerEvaluation(
             ArbiterDecision.COMPLETE,

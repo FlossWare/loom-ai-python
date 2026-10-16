@@ -16,6 +16,7 @@ from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
     CancellationResult,
     ExecutionAlreadyExistsError,
+    ExecutionNotResumableError,
     Orchestrator,
     OrchestratorSubmission,
 )
@@ -42,10 +43,35 @@ class FixedWorker:
 
 
 def build_arbiter(worker: FixedWorker) -> Arbiter:
-    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+    def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
+        if result.successful and context.state.get("phase") == "initial":
+            return WorkerEvaluation(
+                ArbiterDecision.INTERRUPT,
+                reason="initial phase complete; awaiting continuation",
+            )
         return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
     return Arbiter([worker], evaluate, max_retries=0)
+
+
+def test_non_durable_execution_cannot_report_resumable_interrupt_as_success() -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+    orchestrator = Orchestrator(build_arbiter(worker))
+
+    submission = orchestrator.submit(Intent(goal="interrupt without durable storage"))
+
+    assert submission.execution_id is None
+    assert submission.result.status is WorkerStatus.FAILED
+    assert (
+        submission.result.metadata["termination_cause"] == "durable_state_unavailable"
+    )
+    assert submission.result.error == (
+        "execution interrupted but durable state is not configured"
+    )
+    assert any(
+        item.get("type") == "interruption-unavailable"
+        for item in submission.result.evidence
+    )
 
 
 def test_orchestrator_persists_cancellation_as_distinct_terminal_status(
@@ -100,6 +126,9 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)
     intent = Intent(goal="continue this execution", provenance={"source": "test"})
     orchestrator.submit(intent, execution_id="continuing-execution")
+    initial = orchestrator.observe("continuing-execution")
+    assert initial.lifecycle == "interrupted"
+    assert not initial.terminal
 
     submission = orchestrator.continue_execution("continuing-execution")
     observed = orchestrator.observe("continuing-execution")
@@ -108,6 +137,7 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert worker.contexts[1].intent == intent
     assert worker.contexts[1].evidence
     assert observed.status == "success"
+    assert observed.lifecycle == "completed"
     assert observed.result is not None
     assert observed.result["worker_id"] == "arbiter"
     assert observed.result["output"][0]["worker_id"] == "fixed"
@@ -119,6 +149,91 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
         if item.get("type") == "execution-phase"
     ]
     assert phases == ["initial", "continued"]
+
+
+def test_terminal_execution_cannot_be_continued(tmp_path) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+
+    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
+
+    orchestrator = Orchestrator(
+        Arbiter([worker], evaluate, max_retries=0),
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    orchestrator.submit(
+        Intent(goal="complete once"),
+        execution_id="terminal-execution",
+    )
+    before = orchestrator.observe("terminal-execution")
+
+    assert before.terminal
+    with pytest.raises(
+        ExecutionNotResumableError,
+        match="execution is not resumable: terminal-execution",
+    ):
+        orchestrator.continue_execution("terminal-execution")
+
+    after = orchestrator.observe("terminal-execution")
+    assert after == before
+    assert len(worker.contexts) == 1
+
+
+def test_http_terminal_continuation_returns_conflict_without_mutation(
+    tmp_path,
+) -> None:
+    worker = FixedWorker(WorkerStatus.SUCCESS)
+
+    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
+
+    server = LoomServer(
+        Arbiter([worker], evaluate, max_retries=0),
+        port=0,
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    instance = server.start()
+    thread = Thread(target=instance.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://{server.host}:{server.port}"
+    try:
+        submit = Request(
+            f"{base_url}/intents",
+            data=json.dumps(
+                {"goal": "finish once", "execution_id": "terminal-http-execution"}
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(submit) as response:
+            first = json.load(response)
+        assert first["status"] == "success"
+
+        with urlopen(f"{base_url}/executions/terminal-http-execution") as response:
+            before = json.load(response)
+        assert before["lifecycle"] == "completed"
+
+        continue_request = Request(
+            f"{base_url}/executions/terminal-http-execution/continue",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as captured:
+            urlopen(continue_request)
+        assert captured.value.code == 409
+        error = json.load(captured.value)
+        assert error["execution_id"] == "terminal-http-execution"
+        assert "not resumable" in error["error"]
+
+        with urlopen(f"{base_url}/executions/terminal-http-execution") as response:
+            after = json.load(response)
+        assert after["lifecycle"] == "completed"
+        assert after["result"] == before["result"]
+        assert len(worker.contexts) == 1
+    finally:
+        server.close()
+        thread.join(timeout=2)
 
 
 def test_continuation_preserves_state_metadata_and_prior_structured_result(
@@ -148,6 +263,7 @@ def test_continuation_preserves_state_metadata_and_prior_structured_result(
             status="success",
             metadata={"caller": "test"},
             result=prior_result,
+            lifecycle="interrupted",
         )
     )
     orchestrator = Orchestrator(build_arbiter(worker), execution_store=store)

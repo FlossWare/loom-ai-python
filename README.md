@@ -80,6 +80,13 @@ tools to the same public Loom HTTP boundary. Submit accepts an optional absolute
 RFC 3339 `deadline`; cancellation is cooperative and reports whether termination
 is still pending.
 
+Continuation is valid only for an execution explicitly marked `interrupted`
+because more work or external input is required. A completed execution is
+terminal and cannot be reopened; a continuation request against it returns
+`409 Conflict`. An Arbiter can interrupt a successful phase without declaring
+the overall execution complete, preserving the same identity and durable state
+for a later continuation.
+
 - loom_submit_intent -> POST /intents
 - loom_get_execution -> GET /executions/{execution_id}
 - loom_continue_execution -> POST /executions/{execution_id}/continue
