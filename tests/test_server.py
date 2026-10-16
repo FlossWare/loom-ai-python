@@ -51,6 +51,7 @@ def test_server_executes_intent_over_http() -> None:
         base_url = f"http://{server.host}:{instance.server_address[1]}"
         with urlopen(f"{base_url}/health") as response:
             assert response.status == 200
+            assert response.headers.get_content_type() == "application/json"
             assert json.load(response) == {"status": "ok"}
 
         request = Request(
@@ -66,6 +67,7 @@ def test_server_executes_intent_over_http() -> None:
             method="POST",
         )
         with urlopen(request) as response:
+            assert response.headers.get_content_type() == "application/json"
             payload = json.load(response)
 
         assert payload["status"] == "success"
@@ -96,6 +98,8 @@ def test_server_rejects_intent_without_goal() -> None:
             urlopen(request)
         except HTTPError as exc:
             assert exc.code == 400
+            assert exc.headers.get_content_type() == "application/json"
+            assert "error" in json.load(exc)
         else:
             raise AssertionError("expected HTTP 400")
     finally:
@@ -147,6 +151,8 @@ def test_server_rejects_overlarge_payload() -> None:
             urlopen(request)
         except HTTPError as exc:
             assert exc.code == 413
+            assert exc.headers.get_content_type() == "application/json"
+            assert "error" in json.load(exc)
         except URLError:
             # Server closed connection early upon detecting over-sized header/payload
             pass
