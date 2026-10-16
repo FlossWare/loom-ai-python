@@ -412,8 +412,12 @@ def test_active_cancellation_is_pending_until_worker_returns(tmp_path) -> None:
         state = orchestrator.observe("active-execution")
         assert state.status == "cancelled"
         assert state.metadata["cancellation"]["pending"] is False
-        assert any(item.get("type") == "cancellation-requested" for item in state.evidence)
-        assert any(item.get("type") == "cancellation-confirmed" for item in state.evidence)
+        assert any(
+            item.get("type") == "cancellation-requested" for item in state.evidence
+        )
+        assert any(
+            item.get("type") == "cancellation-confirmed" for item in state.evidence
+        )
     finally:
         release.set()
         thread.join(timeout=3)
@@ -434,9 +438,7 @@ def test_deadline_expiring_during_worker_prevents_success(tmp_path) -> None:
         build_arbiter(SlowWorker()),
         execution_store=FileExecutionStateStore(tmp_path),
     )
-    deadline = (
-        datetime.now(timezone.utc) + timedelta(milliseconds=30)
-    ).isoformat()
+    deadline = (datetime.now(timezone.utc) + timedelta(milliseconds=30)).isoformat()
 
     submission = orchestrator.submit(
         Intent(goal="deadline expires while executing"),
