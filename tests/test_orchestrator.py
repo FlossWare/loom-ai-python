@@ -96,12 +96,18 @@ class RecordingOrchestrator:
 
     def __init__(self) -> None:
         self.calls: list[tuple] = []
+        self.deadlines: list[datetime | None] = []
         self.intent = Intent(goal="observed execution")
 
     def submit(
-        self, intent: Intent, *, execution_id: str | None = None
+        self,
+        intent: Intent,
+        *,
+        execution_id: str | None = None,
+        deadline: datetime | None = None,
     ) -> OrchestratorSubmission:
         self.calls.append(("submit", intent.goal, execution_id))
+        self.deadlines.append(deadline)
         return OrchestratorSubmission(
             execution_id,
             WorkerResult(worker_id="service", status=WorkerStatus.SUCCESS),
@@ -150,7 +156,13 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         request = Request(
             f"{base_url}/intents",
             data=json.dumps(
-                {"goal": "delegate this", "execution_id": "exec-1"}
+                {
+                    "goal": "delegate this",
+                    "execution_id": "exec-1",
+                    "deadline": (
+                        datetime.now(timezone.utc) + timedelta(seconds=60)
+                    ).isoformat(),
+                }
             ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -158,6 +170,8 @@ def test_http_routes_delegate_lifecycle_operations_to_orchestrator() -> None:
         with urlopen(request) as response:
             submitted = json.load(response)
         assert submitted["execution_id"] == "exec-1"
+        assert service.deadlines[0] is not None
+        assert service.deadlines[0].tzinfo is not None
 
         with urlopen(f"{base_url}/executions/exec-1") as response:
             observed = json.load(response)
@@ -236,7 +250,11 @@ def test_unexpected_worker_exception_is_persisted_as_failure(tmp_path) -> None:
 def test_http_application_value_error_is_not_misreported_as_bad_request() -> None:
     class FailingOrchestrator(RecordingOrchestrator):
         def submit(
-            self, intent: Intent, *, execution_id: str | None = None
+            self,
+            intent: Intent,
+            *,
+            execution_id: str | None = None,
+            deadline: datetime | None = None,
         ) -> OrchestratorSubmission:
             raise ValueError("failure inside the application service")
 
