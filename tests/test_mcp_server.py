@@ -143,10 +143,8 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 )
                 cancelled_payload = json.loads(cancelled.content[0].text)
                 assert cancelled_payload["execution_id"] == execution_id
-                assert cancelled_payload["status"] in {
-                    "cancellation_requested",
-                    "cancelled",
-                }
+                assert cancelled_payload["cancellation_accepted"] is False
+                assert cancelled_payload["cancellation_pending"] is False
 
         try:
             asyncio.run(run())
