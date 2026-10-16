@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from enum import Enum
+from threading import Event
 from typing import Any, Mapping, Protocol
 
 from loom_ai.intent import Intent
@@ -17,6 +19,34 @@ class WorkerStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class CancellationToken:
+    """Thread-safe cooperative cancellation signal shared with active Workers."""
+
+    def __init__(self) -> None:
+        self._event = Event()
+        self._reason = "cancellation requested"
+
+    def cancel(self, reason: str = "cancellation requested") -> None:
+        """Request cancellation; repeated requests are safe and idempotent."""
+        if not self._event.is_set():
+            self._reason = reason
+            self._event.set()
+
+    @property
+    def requested(self) -> bool:
+        """Whether cancellation has been requested."""
+        return self._event.is_set()
+
+    @property
+    def reason(self) -> str:
+        """The first cancellation reason supplied to this token."""
+        return self._reason
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait for cancellation, returning whether it was requested."""
+        return self._event.wait(timeout)
+
+
 @dataclass(frozen=True)
 class WorkerContext:
     """Explicit execution state supplied to a Worker."""
@@ -25,6 +55,30 @@ class WorkerContext:
     state: Mapping[str, Any] = field(default_factory=dict)
     evidence: tuple[Mapping[str, Any], ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    deadline: datetime | None = None
+    cancellation_token: CancellationToken = field(
+        default_factory=CancellationToken,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.deadline is not None and (
+            self.deadline.tzinfo is None or self.deadline.utcoffset() is None
+        ):
+            raise ValueError("deadline must include an explicit UTC offset")
+
+    @property
+    def cancellation_requested(self) -> bool:
+        """Whether the execution's shared cancellation signal is set."""
+        return self.cancellation_token.requested
+
+    @property
+    def deadline_expired(self) -> bool:
+        """Whether the optional absolute deadline has elapsed."""
+        return self.deadline is not None and datetime.now(timezone.utc) >= (
+            self.deadline.astimezone(timezone.utc)
+        )
 
     def with_state(self, **updates: Any) -> "WorkerContext":
         """Return a context with explicit state updates."""
