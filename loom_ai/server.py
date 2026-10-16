@@ -458,11 +458,7 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
     return {
         "worker_id": result.worker_id,
         "status": result.status.value,
-        "lifecycle": {
-            WorkerStatus.SUCCESS: "completed",
-            WorkerStatus.FAILED: "failed",
-            WorkerStatus.CANCELLED: "cancelled",
-        }[result.status],
+        "lifecycle": "completed",
         "evaluation": EvaluationRecord().to_dict(),
         "output": result.output,
         "evidence": result.evidence,
