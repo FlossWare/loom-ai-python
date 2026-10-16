@@ -165,6 +165,7 @@ class LoomServer:
                         .removesuffix("/cancel")
                         .strip("/")
                     )
+                    execution_id = unquote(execution_id)
                     if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
@@ -215,6 +216,7 @@ class LoomServer:
                         .removesuffix("/continue")
                         .strip("/")
                     )
+                    execution_id = unquote(execution_id)
                     if not execution_id or not owner.orchestrator.durable_enabled:
                         self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                         return
