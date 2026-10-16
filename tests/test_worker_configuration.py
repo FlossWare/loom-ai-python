@@ -181,7 +181,6 @@ def test_input_mapping_is_not_mutated() -> None:
     assert value == original
 
 
-
 def test_unknown_policy_reference_is_rejected() -> None:
     value = config()
     value["policy"]["policy_ref"] = "unregistered"
