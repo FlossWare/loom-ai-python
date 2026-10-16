@@ -113,7 +113,9 @@ def test_output_limit_is_enforced_in_utf8_bytes() -> None:
 
 
 def test_failed_calls_are_retried_only_to_configured_attempt_limit() -> None:
-    provider = RecordingProvider([RuntimeError("temporary"), RuntimeError("still failing"), "unused"])
+    provider = RecordingProvider(
+        [RuntimeError("temporary"), RuntimeError("still failing"), "unused"]
+    )
     worker = activate_model_worker(
         validated(),
         model_selections={("local-gateway", "coding"): (provider, "model-a")},
