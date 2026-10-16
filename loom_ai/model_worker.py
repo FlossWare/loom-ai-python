@@ -35,6 +35,10 @@ class ModelWorker:
             prompt += "\nConstraints:\n" + "\n".join(
                 f"- {item}" for item in intent.constraints
             )
+        if intent.acceptance:
+            prompt += "\nAcceptance criteria:\n" + "\n".join(
+                f"- {item}" for item in intent.acceptance
+            )
 
         try:
             response = self.provider.generate(
