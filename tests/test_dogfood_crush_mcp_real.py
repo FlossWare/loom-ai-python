@@ -60,6 +60,22 @@ def test_verifier_accepts_only_the_expected_documentation_change(
     assert result.evidence[0]["changed_files"] == [DOGFOOD.TARGET_FILE]
 
 
+def test_verifier_ignores_disposable_crush_config(tmp_path: Path) -> None:
+    repo = create_repository(tmp_path)
+    target = repo / DOGFOOD.TARGET_FILE
+    target.write_text(
+        target.read_text(encoding="utf-8") + f"\n{DOGFOOD.MARKER}\n\n"
+        "The public Loom boundary is agent-neutral.\n",
+        encoding="utf-8",
+    )
+    (repo / ".crushrc").write_text("disposable config\n", encoding="utf-8")
+
+    result = DOGFOOD.verify_repository(repo)
+
+    assert result.status is WorkerStatus.SUCCESS
+    assert result.evidence[0]["changed_files"] == [DOGFOOD.TARGET_FILE]
+
+
 def test_verifier_rejects_unrelated_repository_changes(tmp_path: Path) -> None:
     repo = create_repository(tmp_path)
     target = repo / DOGFOOD.TARGET_FILE
