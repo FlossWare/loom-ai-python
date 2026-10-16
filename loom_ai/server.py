@@ -25,7 +25,11 @@ from loom_ai.execution_state import (
     ExecutionStateStore,
 )
 from loom_ai.intent import Intent
-from loom_ai.orchestrator import Orchestrator, parse_deadline
+from loom_ai.orchestrator import (
+    ExecutionAlreadyExistsError,
+    Orchestrator,
+    parse_deadline,
+)
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
@@ -366,6 +370,15 @@ class LoomServer:
                         execution_id=requested_execution_id,
                         deadline=deadline,
                     )
+                except ExecutionAlreadyExistsError as exc:
+                    self._send(
+                        HTTPStatus.CONFLICT,
+                        {
+                            "error": str(exc),
+                            "execution_id": requested_execution_id,
+                        },
+                    )
+                    return
                 except Exception as exc:  # pragma: no cover
                     error_payload = {"error": str(exc)}
                     if (
