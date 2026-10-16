@@ -289,7 +289,14 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
             async with Client(mcp_process) as client:
                 submitted = await client.call_tool(
                     "loom_submit_intent",
-                    {"goal": "survive an HTTP server restart"},
+                    {
+                        "goal": "survive an HTTP server restart",
+                        "intent_id": "intent-restart-preserves-provenance",
+                        "provenance": {
+                            "client": "mcp-restart-test",
+                            "task_path": "tests/test_mcp_server.py",
+                        },
+                    },
                 )
                 payload = json.loads(submitted.content[0].text)
                 return payload["execution_id"]
@@ -317,7 +324,23 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
                 )
                 observed_payload = json.loads(observed.content[0].text)
                 assert observed_payload["execution_id"] == execution_id
+                assert observed_payload["intent_id"] == (
+                    "intent-restart-preserves-provenance"
+                )
                 assert observed_payload["status"] == "success"
+                assert observed_payload["lifecycle"] == "completed"
+                assert observed_payload["provenance"] == {
+                    "client": "mcp-restart-test",
+                    "task_path": "tests/test_mcp_server.py",
+                }
+                assert observed_payload["result"]["worker_id"] == "mcp-test-worker"
+                assert observed_payload["result"]["output"] == {
+                    "goal": "survive an HTTP server restart"
+                }
+                assert observed_payload["result"]["evidence"] == [
+                    {"source": "mcp-e2e"}
+                ]
+                assert {"source": "mcp-e2e"} in observed_payload["evidence"]
 
                 continued = await client.call_tool(
                     "loom_continue_execution",
