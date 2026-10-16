@@ -40,7 +40,8 @@ The Python implementation currently provides:
 - Intent
 - Worker and WorkerContext/WorkerResult
 - Arbiter composition
-- Orchestrator application service for execution, durable state, and continuation
+- Orchestrator application service for execution, durable state, continuation,
+  cooperative cancellation, and absolute deadlines
 - Sequential multi-worker arbitration pipelines with context-preserving stage handoffs
 - provider-neutral ModelProvider boundary
 - ModelWorker
@@ -73,13 +74,16 @@ Loom exposes a generic MCP server through scripts/loom_mcp_server.py. MCP is a
 protocol boundary, not a client-specific adapter. Any MCP-capable host can consume
 the same Loom server; Crush and Claude are examples of clients, not special cases.
 
-The HTTP server is deliberately thin and delegates submit, observe, and continue
-operations to the Orchestrator application service. The MCP adapter maps tools to
-the same public Loom HTTP boundary:
+The HTTP server is deliberately thin and delegates submit, observe, continue, and
+cancel operations to the Orchestrator application service. The MCP adapter maps
+tools to the same public Loom HTTP boundary. Submit accepts an optional absolute
+RFC 3339 `deadline`; cancellation is cooperative and reports whether termination
+is still pending.
 
 - loom_submit_intent -> POST /intents
 - loom_get_execution -> GET /executions/{execution_id}
 - loom_continue_execution -> POST /executions/{execution_id}/continue
+- loom_cancel_execution -> POST /executions/{execution_id}/cancel
 
 The MCP server does not import Loom execution classes, own execution state, replay
 client transcripts, or execute repository work. Loom remains responsible for Intent
