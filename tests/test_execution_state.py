@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from threading import Barrier
 
 import pytest
 
@@ -96,6 +98,29 @@ def test_create_only_store_write_is_safe_across_store_instances(tmp_path) -> Non
         second_store.create(replace(original, state={"different": True}))
 
     assert second_store.load("execution-1") == original
+
+
+def test_concurrent_create_only_writes_claim_identity_once(tmp_path) -> None:
+    stores = [FileExecutionStateStore(tmp_path), FileExecutionStateStore(tmp_path)]
+    states = [
+        build_state(),
+        replace(build_state(), state={"winner": "second"}),
+    ]
+    barrier = Barrier(2)
+
+    def create(index: int) -> str:
+        barrier.wait(timeout=2)
+        try:
+            stores[index].create(states[index])
+        except ExecutionStateConflictError:
+            return "conflict"
+        return "created"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(create, range(2)))
+
+    assert sorted(outcomes) == ["conflict", "created"]
+    assert stores[0].load("execution-1") in states
 
 
 def test_missing_execution_state_is_distinct_from_corruption(tmp_path) -> None:
