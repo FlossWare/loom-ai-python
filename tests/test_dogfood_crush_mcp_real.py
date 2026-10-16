@@ -137,11 +137,17 @@ def test_build_crushrc_configures_provider_model_and_generic_mcp() -> None:
         provider_base_url="http://127.0.0.1:8765/v1",
     )
 
-    assert 'provider add flossware --type openai-compat --base-url "http://127.0.0.1:8765/v1"' in config
+    assert (
+        'provider add flossware --type openai-compat --base-url '
+        '"http://127.0.0.1:8765/v1"'
+    ) in config
     assert (
         'model add flossware/flossware --name "FlossWare" '
         "--context-window 128000 --default-max-tokens 20000"
     ) in config
-    assert 'mcp add loom --command "/tmp/python with spaces" --args "/tmp/loom mcp server.py"' in config
+    assert (
+        'mcp add loom --command "/tmp/python with spaces" '
+        '--args "/tmp/loom mcp server.py"'
+    ) in config
     assert '--env LOOM_URL "http://127.0.0.1:18080" --timeout 30' in config
     assert config.endswith("\n")
