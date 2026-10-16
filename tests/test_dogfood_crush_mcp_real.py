@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 from loom_ai.intent import Intent
@@ -114,3 +115,14 @@ def test_negative_qualification_forces_verification_failure(
 
     assert result.status is WorkerStatus.FAILED
     assert "deliberate negative-path" in result.error
+
+
+def test_run_enforces_the_requested_subprocess_timeout() -> None:
+    try:
+        DOGFOOD.run(
+            [sys.executable, "-c", "import time; time.sleep(5)"],
+            timeout=0.01,
+        )
+    except subprocess.TimeoutExpired:
+        return
+    raise AssertionError("dogfood command exceeded timeout but was not stopped")
