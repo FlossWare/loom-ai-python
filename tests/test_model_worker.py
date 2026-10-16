@@ -151,6 +151,7 @@ def test_model_worker_composes_through_arbiter() -> None:
     assert result.successful
     assert result.output[0].output == "fake response: exercise Stage 5"
 
+
 class ContradictoryProvenanceProvider:
     provider_id = "recording"
 
