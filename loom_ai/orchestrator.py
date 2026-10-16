@@ -11,10 +11,11 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 from threading import RLock
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter
+from loom_ai.evaluation import EvaluationRecord
 from loom_ai.execution_state import ExecutionState, ExecutionStateStore
 from loom_ai.intent import Intent
 from loom_ai.worker import (
@@ -23,6 +24,8 @@ from loom_ai.worker import (
     WorkerResult,
     WorkerStatus,
 )
+
+TaskEvaluator = Callable[[str, Intent, WorkerResult, str], EvaluationRecord]
 
 
 @dataclass(frozen=True)
@@ -50,9 +53,11 @@ class Orchestrator:
         arbiter: Arbiter,
         *,
         execution_store: ExecutionStateStore | None = None,
+        task_evaluator: TaskEvaluator | None = None,
     ) -> None:
         self.arbiter = arbiter
         self.execution_store = execution_store
+        self.task_evaluator = task_evaluator
         self._active: dict[str, CancellationToken] = {}
         self._lock = RLock()
 
@@ -184,6 +189,9 @@ class Orchestrator:
             cancellation = (
                 _cancellation_metadata(token) if control_cause == "cancelled" else None
             )
+            evaluation, evaluation_error = self._evaluate_result(
+                actual_id, intent, result, "initial"
+            )
             latest = self.execution_store.load(actual_id)
             self.execution_store.save(
                 _state_from_result(
@@ -194,6 +202,8 @@ class Orchestrator:
                     prior=latest,
                     deadline=absolute_deadline,
                     cancellation=cancellation,
+                    evaluation=evaluation,
+                    evaluation_error=evaluation_error,
                 )
             )
             self._active.pop(actual_id, None)
@@ -285,6 +295,7 @@ class Orchestrator:
                     state=state,
                     evidence=evidence,
                     status="cancelled",
+                    lifecycle_status="cancelled",
                     metadata=metadata,
                 )
                 store.save(updated)
@@ -335,6 +346,7 @@ class Orchestrator:
                 state=state,
                 evidence=evidence,
                 status="cancelled",
+                lifecycle_status="cancelled",
                 metadata=metadata,
             )
             store.save(updated)
@@ -389,7 +401,14 @@ class Orchestrator:
             token = CancellationToken()
             metadata = dict(execution.metadata)
             metadata["phase"] = "continued"
-            store.save(replace(execution, status="running", metadata=metadata))
+            store.save(
+                replace(
+                    execution,
+                    status="running",
+                    lifecycle_status="running",
+                    metadata=metadata,
+                )
+            )
             self._active[execution_id] = token
 
         context_state = dict(execution.state)
@@ -466,6 +485,9 @@ class Orchestrator:
                 result = _deadline_result(
                     evidence=result.evidence, output=result.output
                 )
+            evaluation, evaluation_error = self._evaluate_result(
+                execution_id, execution.intent, result, "continued"
+            )
             latest = store.load(execution_id) or execution
             store.save(
                 _state_from_result(
@@ -480,10 +502,34 @@ class Orchestrator:
                         if control_cause == "cancelled"
                         else None
                     ),
+                    evaluation=evaluation,
+                    evaluation_error=evaluation_error,
                 )
             )
             self._active.pop(execution_id, None)
         return OrchestratorSubmission(execution_id, result)
+
+    def _evaluate_result(
+        self,
+        execution_id: str,
+        intent: Intent,
+        result: WorkerResult,
+        phase: str,
+    ) -> tuple[EvaluationRecord | None, str | None]:
+        """Evaluate task criteria separately from Arbiter control decisions."""
+        if self.task_evaluator is None:
+            return None, None
+        try:
+            evaluation = self.task_evaluator(execution_id, intent, result, phase)
+            if not isinstance(evaluation, EvaluationRecord):
+                raise TypeError("task evaluator must return an EvaluationRecord")
+            if evaluation.execution_id != execution_id:
+                raise ValueError("evaluation execution_id does not match")
+            return evaluation, None
+        except Exception as exc:
+            # Preserve the execution result; an evaluator failure is not a
+            # replacement execution outcome.
+            return None, f"task evaluator failed: {type(exc).__name__}"
 
     def _execute_with_controls(
         self,
@@ -600,6 +646,8 @@ def _state_from_result(
     prior: ExecutionState | None = None,
     deadline: datetime | None = None,
     cancellation: dict | None = None,
+    evaluation: EvaluationRecord | None = None,
+    evaluation_error: str | None = None,
 ) -> ExecutionState:
     """Build durable state while preserving deadline and cancellation metadata."""
     prior_evidence = prior.evidence if prior is not None else ()
@@ -646,6 +694,10 @@ def _state_from_result(
     termination_cause = result.metadata.get("termination_cause")
     if termination_cause is not None:
         metadata["termination_cause"] = termination_cause
+    if evaluation_error is not None:
+        errors = list(metadata.get("evaluation_errors", []))
+        errors.append({"phase": phase, "error": evaluation_error})
+        metadata["evaluation_errors"] = errors
     state = dict(prior.state) if prior is not None else {}
     state.update(
         {
@@ -662,6 +714,18 @@ def _state_from_result(
         status=status,
         metadata=metadata,
         result=_result_to_dict(result),
+        lifecycle_status=(
+            "cancelled"
+            if result.status is WorkerStatus.CANCELLED
+            else "failed"
+            if result.metadata.get("termination_cause") == "deadline_exceeded"
+            or result.metadata.get("exception_type")
+            else "completed"
+        ),
+        evaluations=(
+            (prior.evaluations if prior is not None else ())
+            + ((evaluation.to_dict(),) if evaluation is not None else ())
+        ),
     )
 
 
