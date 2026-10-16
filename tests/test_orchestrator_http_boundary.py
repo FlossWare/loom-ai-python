@@ -126,9 +126,7 @@ def test_http_exposes_cancelled_execution_status(tmp_path) -> None:
                 error="cancelled by caller",
             )
 
-    def evaluate(
-        result: WorkerResult, _context: WorkerContext
-    ) -> WorkerEvaluation:
+    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
         return WorkerEvaluation(ArbiterDecision.COMPLETE, reason=result.error)
 
     with TemporaryDirectory(dir=tmp_path) as state_dir:
