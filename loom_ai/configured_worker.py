@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 from time import monotonic
 from typing import Mapping
 
@@ -35,12 +36,8 @@ class ConfiguredModelWorker:
         if not model or not model.strip():
             raise WorkerActivationError("resolved model name must not be empty")
         self.configuration = configuration
-        self._worker = ModelWorker(
-            provider,
-            model=model,
-            worker_id=configuration.worker_id,
-            timeout_seconds=float(configuration.limits.max_duration_seconds),
-        )
+        self._provider = provider
+        self._model = model
 
     @property
     def worker_id(self) -> str:
@@ -88,7 +85,30 @@ class ConfiguredModelWorker:
                     {"termination_cause": "duration_limit", "attempts": attempt - 1},
                 )
 
-            result = self._worker.execute(configured_context)
+            remaining = self.configuration.limits.max_duration_seconds - elapsed
+            if context.deadline is not None:
+                deadline_remaining = (
+                    context.deadline.astimezone(timezone.utc)
+                    - datetime.now(timezone.utc)
+                ).total_seconds()
+                if deadline_remaining <= 0:
+                    return _failure(
+                        self.worker_id,
+                        "deadline exceeded",
+                        tuple(evidence) + ({"type": "deadline-exceeded"},),
+                        {
+                            "termination_cause": "deadline_exceeded",
+                            "attempts": attempt - 1,
+                        },
+                    )
+                remaining = min(remaining, deadline_remaining)
+
+            result = ModelWorker(
+                self._provider,
+                model=self._model,
+                worker_id=self.worker_id,
+                timeout_seconds=remaining,
+            ).execute(configured_context)
             last_result = result
             evidence.extend(result.evidence)
             evidence.append(
