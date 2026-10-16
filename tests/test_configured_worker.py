@@ -180,7 +180,6 @@ def test_retry_provider_timeout_uses_remaining_budget(monkeypatch) -> None:
     assert [request.timeout_seconds for request in provider.requests] == [5.0, 2.0]
 
 
-
 def test_cancellation_during_provider_call_overrides_success() -> None:
     token = CancellationToken()
 
