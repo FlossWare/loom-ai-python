@@ -82,6 +82,7 @@ the same public Loom HTTP boundary:
 - loom_get_execution -> GET /executions/{execution_id}
 - loom_continue_execution -> POST /executions/{execution_id}/continue
 - loom_cancel_execution -> POST /executions/{execution_id}/cancel
+- loom_cancel_execution -> POST /executions/{execution_id}/cancel
 
 The MCP server does not import Loom execution classes, own execution state, replay
 client transcripts, or execute repository work. Loom remains responsible for Intent
