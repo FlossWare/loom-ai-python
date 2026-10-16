@@ -101,7 +101,8 @@ def test_arbiter_receives_all_worker_results_and_selects_a_real_result() -> None
 
     assert len(observed) == 1
     assert [item.worker_id for item in observed[0]] == ["first", "second"]
-    assert result.output == {"candidate": 2}
+    assert result.output["selected_result"].output == {"candidate": 2}
+    assert result.output["stages"][0]["worker_results"][0].output == {"candidate": 1}
     assert result.metadata["selected_worker_id"] == "second"
 
 
@@ -130,6 +131,7 @@ def test_selected_result_is_available_to_the_next_stage() -> None:
     assert handoff.worker_id == "candidate-b"
     assert handoff.output == {"patch": "B"}
     assert result.metadata["stages"][1]["stage_id"] == "review"
+    assert result.output["stages"][0]["worker_results"][0].worker_id == "candidate-a"
 
 
 def test_workspace_and_evidence_survive_stage_boundaries() -> None:
@@ -202,5 +204,5 @@ def test_single_stage_pipeline_remains_supported() -> None:
     result = pipeline.execute(WorkerContext(intent=Intent(goal="solve once")))
 
     assert result.status is WorkerStatus.SUCCESS
-    assert result.output == {"answer": 42}
+    assert result.output["selected_result"].output == {"answer": 42}
     assert len(result.metadata["stages"]) == 1
