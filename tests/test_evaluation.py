@@ -197,3 +197,60 @@ def test_http_exposes_and_records_evaluation_without_changing_lifecycle(tmp_path
     finally:
         server.close()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize(
+    ("worker_status", "legacy_status"),
+    [
+        (WorkerStatus.SUCCESS, "success"),
+        (WorkerStatus.FAILED, "failed"),
+        (WorkerStatus.CANCELLED, "cancelled"),
+    ],
+)
+def test_terminal_lifecycle_is_independent_of_result_outcome(
+    tmp_path, worker_status: WorkerStatus, legacy_status: str
+) -> None:
+    class StatusWorker:
+        worker_id = "status-worker"
+
+        def execute(self, _context: WorkerContext) -> WorkerResult:
+            return WorkerResult(worker_id=self.worker_id, status=worker_status)
+
+    def evaluate(result: WorkerResult, _context: WorkerContext) -> WorkerEvaluation:
+        if result.status is WorkerStatus.FAILED:
+            return WorkerEvaluation(ArbiterDecision.REPLAN)
+        return WorkerEvaluation(ArbiterDecision.COMPLETE)
+
+    orchestrator = Orchestrator(
+        Arbiter([StatusWorker()], evaluate, max_retries=0),
+        execution_store=FileExecutionStateStore(tmp_path),
+    )
+    orchestrator.submit(Intent(goal="separate lifecycle and outcome"), execution_id="terminal")
+    observed = orchestrator.observe("terminal")
+
+    assert observed.terminal
+    assert observed.lifecycle == "completed"
+    assert observed.status == legacy_status
+    assert observed.result is not None
+    assert observed.result["status"] == legacy_status
+
+
+def test_evaluation_cannot_be_recorded_before_a_terminal_result(tmp_path) -> None:
+    store = FileExecutionStateStore(tmp_path)
+    store.save(
+        ExecutionState(
+            execution_id="running",
+            intent=Intent(goal="still running"),
+            status="running",
+            lifecycle="running",
+        )
+    )
+    orchestrator = Orchestrator(
+        Arbiter([SuccessfulWorker()], lambda result, context: WorkerEvaluation(ArbiterDecision.COMPLETE)),
+        execution_store=store,
+    )
+
+    with pytest.raises(ValueError, match="terminal execution result"):
+        orchestrator.record_evaluation(
+            "running", EvaluationRecord(status=EvaluationStatus.MET)
+        )
