@@ -88,7 +88,6 @@ def test_orchestrator_continuation_preserves_context_and_appends_evidence(
     assert phases == ["initial", "continued"]
 
 
-
 def test_continuation_preserves_state_metadata_and_prior_structured_result(
     tmp_path,
 ) -> None:
