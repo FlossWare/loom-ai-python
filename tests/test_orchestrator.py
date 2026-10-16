@@ -224,6 +224,7 @@ def test_http_terminal_continuation_returns_conflict_without_mutation(
         assert captured.value.code == 409
         error = json.load(captured.value)
         assert error["execution_id"] == "terminal-http-execution"
+        assert error["category"] == "execution.not_resumable"
         assert "not resumable" in error["error"]
 
         with urlopen(f"{base_url}/executions/terminal-http-execution") as response:
