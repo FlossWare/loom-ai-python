@@ -57,6 +57,26 @@ class Arbiter:
 
         index = 0
         while index < len(queue):
+            if context.cancellation_requested:
+                evidence.append(
+                    {
+                        "type": "cancellation-observed",
+                        "reason": context.cancellation_token.reason,
+                    }
+                )
+                return self._result(
+                    outputs, evidence, "cancelled", context.cancellation_token.reason
+                )
+            if context.deadline_expired:
+                evidence.append({"type": "deadline-exceeded"})
+                return self._result(
+                    outputs,
+                    evidence,
+                    "failed",
+                    "deadline exceeded",
+                    termination_cause="deadline_exceeded",
+                )
+
             worker = queue[index]
             attempts[worker.worker_id] = attempts.get(worker.worker_id, 0) + 1
             child_context = context.with_evidence(*evidence)
@@ -72,6 +92,25 @@ class Arbiter:
                 }
             )
 
+            if context.cancellation_requested:
+                evidence.append(
+                    {
+                        "type": "cancellation-observed",
+                        "reason": context.cancellation_token.reason,
+                    }
+                )
+                return self._result(
+                    outputs, evidence, "cancelled", context.cancellation_token.reason
+                )
+            if context.deadline_expired:
+                evidence.append({"type": "deadline-exceeded"})
+                return self._result(
+                    outputs,
+                    evidence,
+                    "failed",
+                    "deadline exceeded",
+                    termination_cause="deadline_exceeded",
+                )
             if result.status is WorkerStatus.CANCELLED:
                 return self._result(outputs, evidence, "cancelled")
 
@@ -110,6 +149,8 @@ class Arbiter:
         evidence: list[dict],
         status: str,
         reason: str = "",
+        *,
+        termination_cause: str | None = None,
     ) -> WorkerResult:
         result_status = {
             "complete": WorkerStatus.SUCCESS,
@@ -126,5 +167,10 @@ class Arbiter:
                 "arbiter_id": self.worker_id,
                 "workers": [result.worker_id for result in outputs],
                 "reason": reason,
+                **(
+                    {"termination_cause": termination_cause}
+                    if termination_cause is not None
+                    else {}
+                ),
             },
         )
