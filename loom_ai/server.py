@@ -162,7 +162,9 @@ class LoomServer:
                     except KeyError:
                         self._send(
                             HTTPStatus.NOT_FOUND,
-                            _error_payload("execution.not_found", "execution not found"),
+                            _error_payload(
+                                "execution.not_found", "execution not found"
+                            ),
                         )
                         return
                     except ExecutionStateError as exc:
@@ -477,9 +479,7 @@ class LoomServer:
                     )
                     return
                 except Exception as exc:  # pragma: no cover
-                    error_payload = _error_payload(
-                        "server.internal_error", str(exc)
-                    )
+                    error_payload = _error_payload("server.internal_error", str(exc))
                     if (
                         owner.orchestrator.durable_enabled
                         and requested_execution_id is not None
@@ -593,9 +593,7 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
     }
 
 
-def _error_payload(
-    category: str, message: str, **details: Any
-) -> dict[str, Any]:
+def _error_payload(category: str, message: str, **details: Any) -> dict[str, Any]:
     """Build a backward-compatible error body with a stable machine category."""
     return {"category": category, "error": message, **details}
 
