@@ -196,7 +196,7 @@ the execution ID and evidence when the full path passes.
     python -m pytest -q
     python -m build --wheel --sdist
 
-See FlossWare engineering standard ADR-0024 for the contract-centric repository
+See FlossWare/standards ADR-0024 for the contract-centric repository
 naming and layering convention.
 
 
