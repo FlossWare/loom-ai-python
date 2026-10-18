@@ -224,3 +224,25 @@ def test_non_finite_metadata_numbers_are_rejected() -> None:
 
     with pytest.raises(WorkerConfigurationError, match="finite JSON number"):
         validate(value)
+
+
+
+def test_tool_input_schema_references_are_preserved_and_immutable() -> None:
+    value = config()
+    value["tools"][0]["input_schema_ref"] = "repository-read-input"
+
+    result = validate(value)
+
+    assert result.tool_input_schema_refs["repository.read"] == "repository-read-input"
+    with pytest.raises(TypeError):
+        result.tool_input_schema_refs["repository.read"] = "other-schema"
+
+
+def test_duplicate_tool_capability_is_rejected() -> None:
+    value = config()
+    value["tools"].append(
+        {"capability_ref": "repository.read", "required": False}
+    )
+
+    with pytest.raises(WorkerConfigurationError, match="duplicates a configured tool"):
+        validate(value)
