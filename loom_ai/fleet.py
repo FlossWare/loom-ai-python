@@ -138,6 +138,8 @@ class FleetCoordinator:
             raise ValueError("worker_id and implementation_id must not be empty")
         if lease_seconds < 1:
             raise ValueError("lease_seconds must be positive")
+        if any(not isinstance(item, str) for item in capabilities):
+            raise ValueError("capabilities must be strings")
         normalized = tuple(sorted(set(capabilities)))
         if any(not item.strip() for item in normalized):
             raise ValueError("capabilities must not contain empty values")
@@ -168,7 +170,9 @@ class FleetCoordinator:
             if worker.lifecycle in {WorkerLifecycle.STOPPED, WorkerLifecycle.UNHEALTHY}:
                 raise WorkerNotRegisteredError("worker is not available")
             if worker.lifecycle is WorkerLifecycle.DRAINING:
-                return replace(worker, last_heartbeat_at=self._now())
+                updated = replace(worker, last_heartbeat_at=self._now())
+                self._workers[worker_id] = updated
+                return updated
             updated = replace(
                 worker,
                 last_heartbeat_at=self._now(),
@@ -412,7 +416,13 @@ class FleetCoordinator:
                 worker_id=worker.worker_id,
                 status=WorkerStatus.FAILED,
                 error="worker invocation failed",
-                evidence=({"type": "worker-exception", "exception_type": type(exc).__name__},),
+                evidence=(
+                    {
+                        "type": "worker-exception",
+                        "exception_type": type(exc).__name__,
+                    },
+                ),
+                metadata={"retryable": True},
             )
         return self.submit_result(
             task_id,
