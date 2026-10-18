@@ -260,5 +260,7 @@ def test_configured_worker_rejects_capability_not_declared_as_tool() -> None:
         capability_bindings={"repository.read": lambda _args: "contents"},
     )
 
-    with pytest.raises(WorkerActivationError, match="not declared as a configured tool"):
+    with pytest.raises(
+        WorkerActivationError, match="not declared as a configured tool"
+    ):
         worker.invoke_tool("repository.read", {"path": "README.md"})
