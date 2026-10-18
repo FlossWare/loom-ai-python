@@ -527,7 +527,9 @@ class FleetCoordinator:
             worker = self._workers.get(worker_id)
             if worker is None:
                 raise WorkerNotRegisteredError("worker is not registered")
-            updated = replace(worker, lifecycle=lifecycle, last_heartbeat_at=self._now())
+            updated = replace(
+                worker, lifecycle=lifecycle, last_heartbeat_at=self._now()
+            )
             self._workers[worker_id] = updated
             return updated
 
@@ -538,7 +540,9 @@ class FleetCoordinator:
         return task
 
     def _deadline_expired(self, task: FleetTask, now: datetime) -> bool:
-        return task.deadline is not None and now >= task.deadline.astimezone(timezone.utc)
+        return task.deadline is not None and now >= task.deadline.astimezone(
+            timezone.utc
+        )
 
     def _finish_deadline(self, task: FleetTask) -> None:
         result = WorkerResult(
