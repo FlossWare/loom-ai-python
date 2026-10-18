@@ -87,7 +87,9 @@ def test_restart_invalidates_old_lease_and_fences_stale_result(tmp_path) -> None
 def test_terminal_result_and_attempt_history_survive_restart(tmp_path) -> None:
     store = FileFleetStateStore(tmp_path)
     now = datetime(2030, 1, 1, tzinfo=timezone.utc)
-    first = FleetCoordinator(clock=lambda: now, state_store=store, coordinator_id="test")
+    first = FleetCoordinator(
+        clock=lambda: now, state_store=store, coordinator_id="test"
+    )
     first.register_worker("worker-a", "impl-a", ["repository.read"])
     first.submit_task(
         Intent(goal="read repository", intent_id="intent-terminal"),
