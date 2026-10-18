@@ -293,3 +293,63 @@ def test_configured_worker_enforces_declared_input_schema() -> None:
     assert calls == []
     assert worker.invoke_tool("repository.read", {"path": "README.md"}) == "contents"
     assert calls == [{"path": "README.md"}]
+
+
+def test_model_response_accepts_provider_neutral_tool_calls() -> None:
+    from loom_ai import ModelToolCall
+
+    call = ModelToolCall(
+        call_id="call-1",
+        capability_ref="repository.read",
+        arguments={"path": "README.md"},
+    )
+    response = ModelResponse(
+        text="",
+        provider="recording",
+        model="model-a",
+        kind="tool_calls",
+        tool_calls=(call,),
+    )
+
+    assert response.kind == "tool_calls"
+    assert response.tool_calls == (call,)
+    assert response.tool_calls[0].arguments["path"] == "README.md"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        {"call_id": "", "capability_ref": "repository.read", "arguments": {}},
+        {"call_id": "call-1", "capability_ref": "", "arguments": {}},
+        {"call_id": "call-1", "capability_ref": "repository.read", "arguments": {"bad": object()}},
+    ],
+)
+def test_model_tool_call_rejects_invalid_contract_values(call) -> None:
+    from loom_ai import ModelToolCall
+
+    with pytest.raises(ValueError):
+        ModelToolCall(**call)
+
+
+def test_model_response_rejects_duplicate_tool_call_ids() -> None:
+    from loom_ai import ModelToolCall
+
+    call = ModelToolCall("same-id", "repository.read", {})
+    with pytest.raises(ValueError, match="identifiers must be unique"):
+        ModelResponse(
+            text="",
+            provider="recording",
+            model="model-a",
+            kind="tool_calls",
+            tool_calls=(call, call),
+        )
+
+
+def test_model_response_requires_explicit_final_or_tool_call_kind() -> None:
+    with pytest.raises(ValueError, match="kind must be"):
+        ModelResponse(
+            text="answer",
+            provider="recording",
+            model="model-a",
+            kind="implicit-tools",
+        )
