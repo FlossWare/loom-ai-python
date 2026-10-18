@@ -6,6 +6,7 @@ import pytest
 
 from loom_ai.fleet import (
     FleetCoordinator,
+    FleetError,
     FleetTaskStatus,
     StaleLeaseError,
     WorkerLifecycle,
@@ -151,3 +152,32 @@ def test_restart_marks_expired_running_task_as_deadline_exceeded(tmp_path) -> No
     assert restored.status is FleetTaskStatus.FAILED
     assert restored.result is not None
     assert restored.result.metadata["termination_cause"] == "deadline_exceeded"
+
+
+
+def test_persistence_failure_fail_stops_coordinator(tmp_path) -> None:
+    class ToggleStore:
+        def __init__(self) -> None:
+            self.delegate = FileFleetStateStore(tmp_path)
+            self.fail_saves = False
+
+        def create(self, coordinator_id: str, snapshot: dict) -> None:
+            self.delegate.create(coordinator_id, snapshot)
+
+        def save(self, coordinator_id: str, snapshot: dict) -> None:
+            if self.fail_saves:
+                raise OSError("simulated disk failure")
+            self.delegate.save(coordinator_id, snapshot)
+
+        def load(self, coordinator_id: str) -> dict | None:
+            return self.delegate.load(coordinator_id)
+
+    store = ToggleStore()
+    coordinator = FleetCoordinator(state_store=store, coordinator_id="fail-stop-test")
+    store.fail_saves = True
+
+    with pytest.raises(FleetError, match="persistence failed"):
+        coordinator.register_worker("worker-a", "impl-a", ["repository.read"])
+
+    with pytest.raises(FleetError, match="stopped after a persistence failure"):
+        coordinator.register_worker("worker-b", "impl-b", ["repository.read"])
