@@ -66,7 +66,7 @@ def invoke_capability(
                 "configured tool input schema has no trusted validator"
             )
         try:
-            valid_arguments = validator(safe_arguments)
+            valid_arguments = validator(_clone_json(safe_arguments))
         except Exception as exc:
             raise CapabilityInvocationError(
                 "capability input validation failed"
@@ -82,7 +82,7 @@ def invoke_capability(
             )
         try:
             approved = approval_authorizer(
-                configuration, capability_ref, safe_arguments
+                configuration, capability_ref, _clone_json(safe_arguments)
             )
         except Exception as exc:
             raise CapabilityInvocationError("capability approval check failed") from exc
@@ -94,7 +94,7 @@ def invoke_capability(
     # Do not expose arbitrary binding exceptions as capability output or
     # evidence. Preserve the cause for trusted diagnostics at the caller.
     try:
-        result = binding(safe_arguments)
+        result = binding(_clone_json(safe_arguments))
     except Exception as exc:
         raise CapabilityInvocationError("capability invocation failed") from exc
 
@@ -131,3 +131,9 @@ def _assert_json_value(value: Any, path: str = "$") -> None:
             _assert_json_value(item, f"{path}[{index}]")
         return
     raise ValueError(f"{path} is not a JSON value")
+
+
+
+def _clone_json(value: Any) -> Any:
+    """Return a detached JSON-compatible copy before crossing trust boundaries."""
+    return json.loads(json.dumps(value, allow_nan=False, separators=(",", ":")))
