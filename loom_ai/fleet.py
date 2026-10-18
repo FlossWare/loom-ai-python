@@ -780,6 +780,56 @@ class FleetCoordinator:
             self._persist_locked()
         return tuple(expired)
 
+    def cancel_task(
+        self,
+        task_id: str,
+        *,
+        reason: str = "cancellation requested",
+        termination_cause: str = "cancelled",
+    ) -> FleetTask:
+        """Terminate queued or running work and fence any later Worker result."""
+        if not reason.strip():
+            raise ValueError("reason must not be empty")
+        if termination_cause not in {
+            "cancelled",
+            "deadline_exceeded",
+            "worker_timeout",
+        }:
+            raise ValueError("unsupported task termination cause")
+        with self._lock:
+            task = self._get_task(task_id)
+            if task.status in _TERMINAL_TASK_STATES:
+                return task
+            history = task.attempt_history
+            if task.status is FleetTaskStatus.RUNNING and task.lease is not None:
+                history += (
+                    {
+                        "attempt": task.attempt,
+                        "worker_id": task.lease.worker_id,
+                        "generation": task.lease.generation,
+                        "status": "coordinator_terminated_lease",
+                        "termination_cause": termination_cause,
+                    },
+                )
+            cancelled = termination_cause == "cancelled"
+            result = WorkerResult(
+                worker_id="fleet-coordinator",
+                status=WorkerStatus.CANCELLED if cancelled else WorkerStatus.FAILED,
+                error=reason,
+                evidence=({"type": "fleet-task-terminated", "cause": termination_cause},),
+                metadata={"termination_cause": termination_cause},
+            )
+            updated = replace(
+                task,
+                status=FleetTaskStatus.CANCELLED if cancelled else FleetTaskStatus.FAILED,
+                lease=None,
+                result=result,
+                attempt_history=history,
+            )
+            self._tasks[task_id] = updated
+            self._persist_locked()
+            return updated
+
     def observe_task(self, task_id: str) -> FleetTask:
         """Return the current task snapshot by stable identity."""
         with self._lock:
