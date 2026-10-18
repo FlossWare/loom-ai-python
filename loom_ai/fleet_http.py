@@ -97,9 +97,14 @@ class FleetHTTPServer:
                 if path.startswith("/tasks/"):
                     task_id = unquote(path.removeprefix("/tasks/"))
                     try:
-                        self._send(HTTPStatus.OK, _task_payload(owner.coordinator.observe_task(task_id)))
+                        self._send(
+                            HTTPStatus.OK,
+                            _task_payload(owner.coordinator.observe_task(task_id)),
+                        )
                     except KeyError:
-                        self._error(HTTPStatus.NOT_FOUND, "task.not_found", "task not found")
+                        self._error(
+                            HTTPStatus.NOT_FOUND, "task.not_found", "task not found"
+                        )
                     return
                 self._error(HTTPStatus.NOT_FOUND, "route.not_found", "not found")
 
@@ -116,21 +121,38 @@ class FleetHTTPServer:
                             _string_list(payload, "capabilities"),
                             lease_seconds=int(payload.get("lease_seconds", 15)),
                         )
-                        self._send(HTTPStatus.OK, {
-                            "worker_id": worker.worker_id,
-                            "implementation_id": worker.implementation_id,
-                            "capabilities": list(worker.capabilities),
-                            "lifecycle": worker.lifecycle.value,
-                            "lease_seconds": worker.lease_seconds,
-                        })
+                        self._send(
+                            HTTPStatus.OK,
+                            {
+                                "worker_id": worker.worker_id,
+                                "implementation_id": worker.implementation_id,
+                                "capabilities": list(worker.capabilities),
+                                "lifecycle": worker.lifecycle.value,
+                                "lease_seconds": worker.lease_seconds,
+                            },
+                        )
                         return
                     if path.startswith("/workers/") and path.endswith("/heartbeat"):
-                        worker_id = unquote(path.removeprefix("/workers/").removesuffix("/heartbeat").strip("/"))
+                        worker_id = unquote(
+                            path.removeprefix("/workers/")
+                            .removesuffix("/heartbeat")
+                            .strip("/")
+                        )
                         worker = owner.coordinator.heartbeat(worker_id)
-                        self._send(HTTPStatus.OK, {"worker_id": worker.worker_id, "lifecycle": worker.lifecycle.value})
+                        self._send(
+                            HTTPStatus.OK,
+                            {
+                                "worker_id": worker.worker_id,
+                                "lifecycle": worker.lifecycle.value,
+                            },
+                        )
                         return
                     if path.startswith("/workers/") and path.endswith("/drain"):
-                        worker_id = unquote(path.removeprefix("/workers/").removesuffix("/drain").strip("/"))
+                        worker_id = unquote(
+                            path.removeprefix("/workers/")
+                            .removesuffix("/drain")
+                            .strip("/")
+                        )
                         worker = owner.coordinator.drain_worker(worker_id)
                         self._send(HTTPStatus.OK, {"worker_id": worker.worker_id, "lifecycle": worker.lifecycle.value})
                         return
@@ -160,10 +182,14 @@ class FleetHTTPServer:
                     if path.startswith("/workers/") and path.endswith("/claim"):
                         worker_id = unquote(path.removeprefix("/workers/").removesuffix("/claim").strip("/"))
                         task = owner.coordinator.claim_task(worker_id)
-                        self._send(HTTPStatus.OK, {"task": _task_payload(task) if task else None})
+                        self._send(
+                            HTTPStatus.OK, {"task": _task_payload(task) if task else None}
+                        )
                         return
                     if path.startswith("/tasks/") and path.endswith("/renew"):
-                        task_id = unquote(path.removeprefix("/tasks/").removesuffix("/renew").strip("/"))
+                        task_id = unquote(
+                            path.removeprefix("/tasks/").removesuffix("/renew").strip("/")
+                        )
                         lease = owner.coordinator.renew_lease(
                             task_id,
                             worker_id=_required_string(payload, "worker_id"),
@@ -173,7 +199,9 @@ class FleetHTTPServer:
                         self._send(HTTPStatus.OK, _lease_payload(lease))
                         return
                     if path.startswith("/tasks/") and path.endswith("/result"):
-                        task_id = unquote(path.removeprefix("/tasks/").removesuffix("/result").strip("/"))
+                        task_id = unquote(
+                            path.removeprefix("/tasks/").removesuffix("/result").strip("/")
+                        )
                         result_value = payload.get("result")
                         if not isinstance(result_value, dict):
                             raise ValueError("result must be an object")
@@ -252,12 +280,16 @@ class FleetWorkerAgent:
         self._registered = False
 
     def register(self) -> None:
-        self._request("POST", "/workers/register", {
-            "worker_id": self.worker.worker_id,
-            "implementation_id": self.implementation_id,
-            "capabilities": list(self.capabilities),
-            "lease_seconds": self.lease_seconds,
-        })
+        self._request(
+            "POST",
+            "/workers/register",
+            {
+                "worker_id": self.worker.worker_id,
+                "implementation_id": self.implementation_id,
+                "capabilities": list(self.capabilities),
+                "lease_seconds": self.lease_seconds,
+            },
+        )
         self._registered = True
 
     def run_once(self) -> bool:
@@ -297,11 +329,15 @@ class FleetWorkerAgent:
         def renew_while_running() -> None:
             while not stop_renewal.wait(interval):
                 try:
-                    self._request("POST", f"/tasks/{task['task_id']}/renew", {
-                        "worker_id": self.worker.worker_id,
-                        "lease_id": lease["lease_id"],
-                        "generation": lease["generation"],
-                    })
+                    self._request(
+                        "POST",
+                        f"/tasks/{task['task_id']}/renew",
+                        {
+                            "worker_id": self.worker.worker_id,
+                            "lease_id": lease["lease_id"],
+                            "generation": lease["generation"],
+                        },
+                    )
                 except FleetHTTPError:
                     lease_lost.set()
                     return
@@ -325,13 +361,17 @@ class FleetWorkerAgent:
             renewal.join(timeout=interval + 1)
         if lease_lost.is_set():
             return True
-        self._request("POST", f"/tasks/{task['task_id']}/result", {
-            "worker_id": self.worker.worker_id,
-            "lease_id": lease["lease_id"],
-            "generation": lease["generation"],
-            "retryable": result.metadata.get("retryable") is True,
-            "result": _result_payload(result),
-        })
+        self._request(
+            "POST",
+            f"/tasks/{task['task_id']}/result",
+            {
+                "worker_id": self.worker.worker_id,
+                "lease_id": lease["lease_id"],
+                "generation": lease["generation"],
+                "retryable": result.metadata.get("retryable") is True,
+                "result": _result_payload(result),
+            },
+        )
         return True
 
     def run_forever(self, stop_event: Event | None = None) -> None:
