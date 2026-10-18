@@ -150,6 +150,38 @@ class ConfiguredModelWorker:
                     {"termination_cause": "provider_failure", "model_turns": turn},
                 )
 
+            cause = context.termination_cause
+            elapsed = monotonic() - started
+            if cause is not None:
+                return _failure(
+                    self.worker_id,
+                    "execution cancelled" if cause == "cancelled" else "deadline exceeded",
+                    tuple(evidence),
+                    {"termination_cause": cause, "model_turns": turn},
+                    status=WorkerStatus.CANCELLED
+                    if cause == "cancelled"
+                    else WorkerStatus.FAILED,
+                )
+            if elapsed >= self.configuration.limits.max_duration_seconds:
+                return _failure(
+                    self.worker_id,
+                    "configured duration limit exceeded",
+                    tuple(evidence) + ({"type": "configured-duration-limit"},),
+                    {"termination_cause": "duration_limit", "model_turns": turn},
+                )
+            if context.deadline is not None:
+                deadline_remaining = (
+                    context.deadline.astimezone(timezone.utc)
+                    - datetime.now(timezone.utc)
+                ).total_seconds()
+                if deadline_remaining <= 0:
+                    return _failure(
+                        self.worker_id,
+                        "deadline exceeded",
+                        tuple(evidence) + ({"type": "deadline-exceeded"},),
+                        {"termination_cause": "deadline_exceeded", "model_turns": turn},
+                    )
+
             evidence.append(
                 {
                     "type": "model-response",
