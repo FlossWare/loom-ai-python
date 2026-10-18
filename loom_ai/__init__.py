@@ -5,18 +5,6 @@ provides their Python realization. Generic Loom protocol semantics remain
 owned by FlossWare/loom.
 """
 
-from loom_ai.fleet import (
-    FleetCoordinator,
-    FleetConflictError,
-    FleetError,
-    FleetTask,
-    FleetTaskStatus,
-    StaleLeaseError,
-    TaskLease,
-    WorkerLifecycle,
-    WorkerNotRegisteredError,
-    WorkerRegistration,
-)
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.capability_runtime import CapabilityInvocationError, invoke_capability
 from loom_ai.configured_worker import (
@@ -33,6 +21,18 @@ from loom_ai.execution_state import (
     FileExecutionStateStore,
 )
 from loom_ai.fake_model_provider import FakeModelProvider
+from loom_ai.fleet import (
+    FleetCoordinator,
+    FleetConflictError,
+    FleetError,
+    FleetTask,
+    FleetTaskStatus,
+    StaleLeaseError,
+    TaskLease,
+    WorkerLifecycle,
+    WorkerNotRegisteredError,
+    WorkerRegistration,
+)
 from loom_ai.intent import Intent, IntentParseError
 from loom_ai.model import (
     ModelProvider,
