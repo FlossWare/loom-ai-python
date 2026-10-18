@@ -88,6 +88,43 @@ repository editing, distributed Worker execution, or production qualification.
 A real deployment must supply the configured Worker/Arbiter composition and
 complete the external-client dogfood gate before claiming end-to-end execution.
 
+## Distributed fleet worker HTTP boundary
+
+The reference server can expose authenticated worker registration, heartbeat, claim,
+result-reporting, and observation endpoints when a `FleetCoordinator` is configured.
+The endpoints are transport adapters over the coordinator contract; they do not
+create a second orchestration authority.
+
+Enable the worker protocol with a persistent fleet state directory and a bearer
+token supplied through the environment:
+
+```sh
+export LOOM_FLEET_TOKEN='replace-with-a-long-random-token'
+loom-server \
+  --state-dir "$HOME/.local/state/flossware-loom/executions" \
+  --fleet-state-dir "$HOME/.local/state/flossware-loom/fleet"
+```
+
+Worker operations are rooted at `/fleet`:
+
+- `POST /fleet/workers/register`
+- `GET /fleet/workers/{worker_id}`
+- `POST /fleet/workers/{worker_id}/heartbeat`
+- `POST /fleet/workers/{worker_id}/claim`
+- `POST /fleet/tasks/{task_id}/result`
+- `GET /fleet/tasks/{task_id}`
+
+Every worker request must send `Authorization: Bearer $LOOM_FLEET_TOKEN`.
+Do not expose this HTTP listener to an untrusted network: bearer tokens are not
+encryption. Use a trusted network or terminate TLS in a correctly configured
+reverse proxy. Keep the token out of command-line arguments, logs, and source
+control.
+
+This transport slice makes the worker protocol externally callable. It does not
+yet route ordinary `POST /intents` execution through the fleet coordinator, nor
+does it qualify multi-host deployment. Those remain explicit distributed-fleet
+acceptance gates; the default CLI Worker remains a transport smoke Worker.
+
 ## Generic MCP interface
 
 For the current route inventory, JSON representations, error behavior, compatibility constraints, and ADR-0031 adoption gaps, see [REST API contract inventory](docs/REST_API.md).
