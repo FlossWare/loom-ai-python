@@ -66,6 +66,28 @@ Provider SDKs, credentials, model routing, budgets, caching, evaluation,
 optimization strategies, and other reusable capabilities remain separate
 capabilities rather than becoming implicit responsibilities of this repository.
 
+## Running the HTTP boundary
+
+Install the package, then start the reference HTTP server with an explicit state
+directory when execution observation must survive process restarts:
+
+```sh
+loom-server --host 127.0.0.1 --port 8000 \
+  --state-dir "$HOME/.local/state/flossware-loom/executions"
+```
+
+The state directory contains durable execution snapshots. Keep it on storage
+that survives server restarts and restrict filesystem permissions to the service
+identity. Omitting `--state-dir` deliberately disables durable observation and
+continuation; the server will still respond to `/health` and accept ephemeral
+smoke-test submissions.
+
+**Important limitation:** the CLI's built-in Worker is a no-op transport smoke
+Worker. This command proves HTTP/application-boundary wiring and persistence, not
+repository editing, distributed Worker execution, or production qualification.
+A real deployment must supply the configured Worker/Arbiter composition and
+complete the external-client dogfood gate before claiming end-to-end execution.
+
 ## Generic MCP interface
 
 For the current route inventory, JSON representations, error behavior, compatibility constraints, and ADR-0031 adoption gaps, see [REST API contract inventory](docs/REST_API.md).
