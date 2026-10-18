@@ -38,6 +38,10 @@ def invoke_capability(
         raise CapabilityInvocationError("capability reference must be non-empty")
     if capability_ref not in configuration.capabilities:
         raise CapabilityInvocationError("capability is not authorized by Worker config")
+    if capability_ref not in configuration.tool_capabilities:
+        raise CapabilityInvocationError(
+            "capability is not declared as an executable Worker tool"
+        )
     if not isinstance(arguments, Mapping):
         raise CapabilityInvocationError("capability arguments must be an object")
     if configuration.approval_required:
