@@ -45,6 +45,12 @@ class ValidatedWorkerConfiguration:
     tool_input_schema_refs: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    tool_name_to_capability: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    tool_descriptions: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 
 def validate_worker_configuration(
@@ -133,11 +139,17 @@ def validate_worker_configuration(
     tool_capabilities: set[str] = set()
     tool_input_schema_refs: dict[str, str] = {}
     required_tools: set[str] = set()
+    tool_name_to_capability: dict[str, str] = {}
+    tool_descriptions: dict[str, str] = {}
     for index, tool in enumerate(tools):
         path = f"tools[{index}]"
         if not isinstance(tool, Mapping):
             raise WorkerConfigurationError(f"{path} must be an object")
-        _keys(tool, {"capability_ref", "required", "input_schema_ref"}, path)
+        _keys(
+            tool,
+            {"name", "description", "capability_ref", "required", "input_schema_ref"},
+            path,
+        )
         if "capability_ref" not in tool or "required" not in tool:
             raise WorkerConfigurationError(
                 f"{path} requires capability_ref and required"
@@ -149,6 +161,15 @@ def validate_worker_configuration(
             raise WorkerConfigurationError(
                 f"{path}.capability_ref duplicates a configured tool"
             )
+        name = _nonempty_string(tool.get("name", capability), f"{path}.name")
+        description = _nonempty_string(
+            tool.get("description", f"Configured capability {capability}"),
+            f"{path}.description",
+        )
+        if name in tool_name_to_capability:
+            raise WorkerConfigurationError(f"{path}.name duplicates a configured tool")
+        tool_name_to_capability[name] = capability
+        tool_descriptions[name] = description
         if "input_schema_ref" in tool:
             tool_input_schema_refs[capability] = _nonempty_string(
                 tool["input_schema_ref"], f"{path}.input_schema_ref"
@@ -297,6 +318,8 @@ def validate_worker_configuration(
         metadata=_freeze_metadata(metadata),
         tool_capabilities=frozenset(tool_capabilities),
         tool_input_schema_refs=MappingProxyType(dict(tool_input_schema_refs)),
+        tool_name_to_capability=MappingProxyType(dict(tool_name_to_capability)),
+        tool_descriptions=MappingProxyType(dict(tool_descriptions)),
     )
 
 
