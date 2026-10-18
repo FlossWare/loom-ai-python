@@ -18,7 +18,9 @@ from loom_ai.worker import WorkerResult, WorkerStatus
 def test_queued_task_survives_restart_and_worker_must_re_register(tmp_path) -> None:
     store = FileFleetStateStore(tmp_path)
     now = datetime(2030, 1, 1, tzinfo=timezone.utc)
-    first = FleetCoordinator(clock=lambda: now, state_store=store, coordinator_id="test")
+    first = FleetCoordinator(
+        clock=lambda: now, state_store=store, coordinator_id="test"
+    )
     first.register_worker("worker-a", "impl-a", ["repository.read"])
     task = first.submit_task(
         Intent(goal="read repository", intent_id="intent-restart"),
@@ -58,7 +60,10 @@ def test_restart_invalidates_old_lease_and_fences_stale_result(tmp_path) -> None
     restored = recovered.observe_task("task-active")
     assert restored.status is FleetTaskStatus.QUEUED
     assert restored.lease is None
-    assert restored.attempt_history[-1]["status"] == "coordinator_restart_lease_invalidated"
+    assert (
+        restored.attempt_history[-1]["status"]
+        == "coordinator_restart_lease_invalidated"
+    )
 
     recovered.register_worker("worker-a", "impl-a", ["repository.read"])
     new_task = recovered.claim_task("worker-a")
@@ -71,7 +76,9 @@ def test_restart_invalidates_old_lease_and_fences_stale_result(tmp_path) -> None
             worker_id="worker-a",
             lease_id=old_lease.lease_id,
             generation=old_lease.generation,
-            result=WorkerResult(worker_id="worker-a", status=WorkerStatus.SUCCESS, output="stale"),
+            result=WorkerResult(
+                worker_id="worker-a", status=WorkerStatus.SUCCESS, output="stale"
+            ),
         )
 
 
@@ -94,8 +101,11 @@ def test_terminal_result_and_attempt_history_survive_restart(tmp_path) -> None:
         lease_id=leased.lease.lease_id,
         generation=leased.lease.generation,
         result=WorkerResult(
-            worker_id="worker-a", status=WorkerStatus.SUCCESS, output={"documents": 3},
-            evidence=({"type": "test"},), metadata={"source": "test"},
+            worker_id="worker-a",
+            status=WorkerStatus.SUCCESS,
+            output={"documents": 3},
+            evidence=({"type": "test"},),
+            metadata={"source": "test"},
         ),
     )
 
