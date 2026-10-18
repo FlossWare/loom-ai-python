@@ -145,48 +145,95 @@ class FleetCoordinator:
         if self._state_store is None:
             return
         if self._persistence_error is not None:
-            raise FleetError("coordinator stopped after a persistence failure") from self._persistence_error
+            raise FleetError(
+                "coordinator stopped after a persistence failure"
+            ) from self._persistence_error
         try:
-            self._state_store.save(self._coordinator_id, self._snapshot_locked())
+            self._state_store.save(
+                self._coordinator_id, self._snapshot_locked()
+            )
         except Exception as exc:
             self._persistence_error = exc
-            raise FleetError("fleet state persistence failed; coordinator is fail-stopped") from exc
+            raise FleetError(
+                "fleet state persistence failed; coordinator is fail-stopped"
+            ) from exc
 
     def _snapshot_locked(self) -> dict[str, Any]:
         def stamp(value: datetime | None) -> str | None:
             return value.isoformat() if value is not None else None
 
-        workers = [{
-            "worker_id": w.worker_id, "implementation_id": w.implementation_id,
-            "capabilities": list(w.capabilities), "lifecycle": w.lifecycle.value,
-            "last_heartbeat_at": stamp(w.last_heartbeat_at), "lease_seconds": w.lease_seconds,
-        } for w in self._workers.values()]
+        workers = [
+            {
+                "worker_id": worker.worker_id,
+                "implementation_id": worker.implementation_id,
+                "capabilities": list(worker.capabilities),
+                "lifecycle": worker.lifecycle.value,
+                "last_heartbeat_at": stamp(worker.last_heartbeat_at),
+                "lease_seconds": worker.lease_seconds,
+            }
+            for worker in self._workers.values()
+        ]
         tasks = []
-        for t in self._tasks.values():
-            intent_value, lease_value, result_value = t.intent, t.lease, t.result
-            tasks.append({
-                "task_id": t.task_id, "execution_id": t.execution_id,
-                "idempotency_key": t.idempotency_key,
-                "intent": {"goal": intent_value.goal, "requirements": list(intent_value.requirements),
-                    "constraints": list(intent_value.constraints), "acceptance": list(intent_value.acceptance),
-                    "title": intent_value.title, "intent_id": intent_value.intent_id, "provenance": dict(intent_value.provenance)},
-                "required_capabilities": list(t.required_capabilities), "max_attempts": t.max_attempts,
-                "deadline": stamp(t.deadline), "submitted_at": stamp(t.submitted_at),
-                "status": t.status.value, "attempt": t.attempt, "lease_generation": t.lease_generation,
-                "lease": None if lease_value is None else {"task_id": lease_value.task_id, "lease_id": lease_value.lease_id,
-                    "worker_id": lease_value.worker_id, "generation": lease_value.generation, "attempt": lease_value.attempt,
-                    "expires_at": stamp(lease_value.expires_at)},
-                "result": None if result_value is None else {"worker_id": result_value.worker_id, "status": result_value.status.value,
-                    "output": result_value.output, "evidence": list(result_value.evidence), "error": result_value.error,
-                    "metadata": dict(result_value.metadata)},
-                "attempt_history": list(t.attempt_history),
-            })
+        for task in self._tasks.values():
+            intent_value = task.intent
+            lease_value = task.lease
+            result_value = task.result
+            tasks.append(
+                {
+                    "task_id": task.task_id,
+                    "execution_id": task.execution_id,
+                    "idempotency_key": task.idempotency_key,
+                    "intent": {
+                        "goal": intent_value.goal,
+                        "requirements": list(intent_value.requirements),
+                        "constraints": list(intent_value.constraints),
+                        "acceptance": list(intent_value.acceptance),
+                        "title": intent_value.title,
+                        "intent_id": intent_value.intent_id,
+                        "provenance": dict(intent_value.provenance),
+                    },
+                    "required_capabilities": list(task.required_capabilities),
+                    "max_attempts": task.max_attempts,
+                    "deadline": stamp(task.deadline),
+                    "submitted_at": stamp(task.submitted_at),
+                    "status": task.status.value,
+                    "attempt": task.attempt,
+                    "lease_generation": task.lease_generation,
+                    "lease": (
+                        None
+                        if lease_value is None
+                        else {
+                            "task_id": lease_value.task_id,
+                            "lease_id": lease_value.lease_id,
+                            "worker_id": lease_value.worker_id,
+                            "generation": lease_value.generation,
+                            "attempt": lease_value.attempt,
+                            "expires_at": stamp(lease_value.expires_at),
+                        }
+                    ),
+                    "result": (
+                        None
+                        if result_value is None
+                        else {
+                            "worker_id": result_value.worker_id,
+                            "status": result_value.status.value,
+                            "output": result_value.output,
+                            "evidence": list(result_value.evidence),
+                            "error": result_value.error,
+                            "metadata": dict(result_value.metadata),
+                        }
+                    ),
+                    "attempt_history": list(task.attempt_history),
+                }
+            )
         return {"workers": workers, "tasks": tasks}
 
     def _restore_snapshot(self, snapshot: Mapping[str, Any]) -> None:
         """Restore validated state while invalidating all pre-restart leases."""
         try:
-            if not isinstance(snapshot.get("workers"), list) or not isinstance(snapshot.get("tasks"), list):
+            if not isinstance(snapshot.get("workers"), list) or not isinstance(
+                snapshot.get("tasks"), list
+            ):
                 raise ValueError("snapshot requires worker and task lists")
             now = self._now()
 
@@ -204,50 +251,90 @@ class FleetCoordinator:
                 if worker_id in workers:
                     raise ValueError("duplicate worker identity")
                 workers[worker_id] = WorkerRegistration(
-                    worker_id=worker_id, implementation_id=raw["implementation_id"],
-                    capabilities=tuple(raw["capabilities"]), lifecycle=WorkerLifecycle.UNHEALTHY,
-                    last_heartbeat_at=now, lease_seconds=int(raw["lease_seconds"]),
+                    worker_id=worker_id,
+                    implementation_id=raw["implementation_id"],
+                    capabilities=tuple(raw["capabilities"]),
+                    lifecycle=WorkerLifecycle.UNHEALTHY,
+                    last_heartbeat_at=now,
+                    lease_seconds=int(raw["lease_seconds"]),
                 )
+
             tasks: dict[str, FleetTask] = {}
             for raw in snapshot["tasks"]:
                 task_id = raw["task_id"]
                 if task_id in tasks:
                     raise ValueError("duplicate task identity")
-                ri = raw["intent"]
-                intent = Intent(goal=ri["goal"], requirements=tuple(ri["requirements"]),
-                    constraints=tuple(ri["constraints"]), acceptance=tuple(ri["acceptance"]),
-                    title=ri["title"], intent_id=ri["intent_id"], provenance=dict(ri["provenance"]))
-                rr = raw.get("result")
-                result = None if rresult_value is None else WorkerResult(
-                    worker_id=rr["worker_id"], status=WorkerStatus(rr["status"]),
-                    output=rr.get("output"), evidence=tuple(rr.get("evidence", ())),
-                    error=rr.get("error", ""), metadata=dict(rr.get("metadata", {})))
+                raw_intent = raw["intent"]
+                intent_value = Intent(
+                    goal=raw_intent["goal"],
+                    requirements=tuple(raw_intent["requirements"]),
+                    constraints=tuple(raw_intent["constraints"]),
+                    acceptance=tuple(raw_intent["acceptance"]),
+                    title=raw_intent["title"],
+                    intent_id=raw_intent["intent_id"],
+                    provenance=dict(raw_intent["provenance"]),
+                )
+                raw_result = raw.get("result")
+                result_value = (
+                    None
+                    if raw_result is None
+                    else WorkerResult(
+                        worker_id=raw_result["worker_id"],
+                        status=WorkerStatus(raw_result["status"]),
+                        output=raw_result.get("output"),
+                        evidence=tuple(raw_result.get("evidence", ())),
+                        error=raw_result.get("error", ""),
+                        metadata=dict(raw_result.get("metadata", {})),
+                    )
+                )
                 status = FleetTaskStatus(raw["status"])
                 history = tuple(raw.get("attempt_history", ()))
-                attempt, maximum = int(raw["attempt"]), int(raw["max_attempts"])
+                attempt = int(raw["attempt"])
+                maximum = int(raw["max_attempts"])
                 deadline = parse_time(raw.get("deadline"))
                 if status is FleetTaskStatus.RUNNING:
                     old_lease = raw.get("lease")
                     if old_lease is None:
                         raise ValueError("running task lacks lease")
-                    history += ({"attempt": attempt, "worker_id": old_lease["worker_id"],
-                        "generation": int(old_lease["generation"]),
-                        "status": "coordinator_restart_lease_invalidated"},)
-                    if attempt < maximum and not (deadline is not None and now >= deadline):
-                        status, result = FleetTaskStatus.QUEUED, None
+                    history += (
+                        {
+                            "attempt": attempt,
+                            "worker_id": old_lease["worker_id"],
+                            "generation": int(old_lease["generation"]),
+                            "status": "coordinator_restart_lease_invalidated",
+                        },
+                    )
+                    if attempt < maximum and not (
+                        deadline is not None and now >= deadline
+                    ):
+                        status, result_value = FleetTaskStatus.QUEUED, None
                     else:
                         status = FleetTaskStatus.FAILED
-                        result = WorkerResult(worker_id="fleet-coordinator", status=WorkerStatus.FAILED,
+                        result_value = WorkerResult(
+                            worker_id="fleet-coordinator",
+                            status=WorkerStatus.FAILED,
                             error="active lease invalidated during coordinator restart",
-                            evidence=({"type": "coordinator-restart-lease-invalidated"},),
-                            metadata={"termination_cause": "coordinator_restart"})
+                            evidence=(
+                                {"type": "coordinator-restart-lease-invalidated"},
+                            ),
+                            metadata={"termination_cause": "coordinator_restart"},
+                        )
                 tasks[task_id] = FleetTask(
-                    task_id=task_id, execution_id=raw["execution_id"],
-                    idempotency_key=raw["idempotency_key"], intent=intent,
-                    required_capabilities=tuple(raw["required_capabilities"]), max_attempts=maximum,
-                    deadline=deadline, submitted_at=parse_time(raw["submitted_at"]),
-                    status=status, attempt=attempt, lease_generation=int(raw["lease_generation"]),
-                    lease=None, result=result, attempt_history=history)
+                    task_id=task_id,
+                    execution_id=raw["execution_id"],
+                    idempotency_key=raw["idempotency_key"],
+                    intent=intent_value,
+                    required_capabilities=tuple(raw["required_capabilities"]),
+                    max_attempts=maximum,
+                    deadline=deadline,
+                    submitted_at=parse_time(raw["submitted_at"]),
+                    status=status,
+                    attempt=attempt,
+                    lease_generation=int(raw["lease_generation"]),
+                    lease=None,
+                    result=result_value,
+                    attempt_history=history,
+                )
             self._workers, self._tasks = workers, tasks
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise FleetStateError("persisted fleet snapshot is invalid") from exc
