@@ -41,7 +41,9 @@ def test_queued_task_survives_restart_and_worker_must_re_register(tmp_path) -> N
 def test_restart_invalidates_old_lease_and_fences_stale_result(tmp_path) -> None:
     store = FileFleetStateStore(tmp_path)
     now = datetime(2030, 1, 1, tzinfo=timezone.utc)
-    first = FleetCoordinator(clock=lambda: now, state_store=store, coordinator_id="test")
+    first = FleetCoordinator(
+        clock=lambda: now, state_store=store, coordinator_id="test"
+    )
     first.register_worker("worker-a", "impl-a", ["repository.read"])
     first.submit_task(
         Intent(goal="read repository", intent_id="intent-active"),
@@ -118,7 +120,6 @@ def test_terminal_result_and_attempt_history_survive_restart(tmp_path) -> None:
     assert restored.result.output == {"documents": 3}
     assert restored.result.metadata == {"source": "test"}
     assert restored.attempt_history[0]["status"] == "success"
-
 
 
 def test_restart_marks_expired_running_task_as_deadline_exceeded(tmp_path) -> None:
