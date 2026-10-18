@@ -7,7 +7,7 @@ credentials, contact model providers, or invoke capabilities.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -42,6 +42,9 @@ class ValidatedWorkerConfiguration:
     limits: WorkerLimits
     metadata: Mapping[str, Any]
     tool_capabilities: frozenset[str] = frozenset()
+    tool_input_schema_refs: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 
 def validate_worker_configuration(
@@ -128,6 +131,7 @@ def validate_worker_configuration(
     if not isinstance(tools, list):
         raise WorkerConfigurationError("tools must be an array")
     tool_capabilities: set[str] = set()
+    tool_input_schema_refs: dict[str, str] = {}
     required_tools: set[str] = set()
     for index, tool in enumerate(tools):
         path = f"tools[{index}]"
@@ -141,8 +145,14 @@ def validate_worker_configuration(
         capability = _nonempty_string(tool["capability_ref"], f"{path}.capability_ref")
         if not isinstance(tool["required"], bool):
             raise WorkerConfigurationError(f"{path}.required must be a boolean")
+        if capability in tool_capabilities:
+            raise WorkerConfigurationError(
+                f"{path}.capability_ref duplicates a configured tool"
+            )
         if "input_schema_ref" in tool:
-            _nonempty_string(tool["input_schema_ref"], f"{path}.input_schema_ref")
+            tool_input_schema_refs[capability] = _nonempty_string(
+                tool["input_schema_ref"], f"{path}.input_schema_ref"
+            )
         tool_capabilities.add(capability)
         if tool["required"]:
             required_tools.add(capability)
@@ -286,6 +296,7 @@ def validate_worker_configuration(
         limits=WorkerLimits(**limit_values),
         metadata=_freeze_metadata(metadata),
         tool_capabilities=frozenset(tool_capabilities),
+        tool_input_schema_refs=MappingProxyType(dict(tool_input_schema_refs)),
     )
 
 
