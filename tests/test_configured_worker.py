@@ -12,6 +12,7 @@ from loom_ai import (
     WorkerContext,
     WorkerStatus,
 )
+from loom_ai.capability_runtime import CapabilityInvocationError
 from loom_ai.configured_worker import WorkerActivationError, activate_model_worker
 from loom_ai.model import ModelRequest
 from loom_ai.worker_configuration import validate_worker_configuration
@@ -208,3 +209,56 @@ def test_cancellation_during_provider_call_overrides_success() -> None:
         and item.get("cause") == "cancelled"
         for item in result.evidence
     )
+
+
+
+def test_configured_worker_invokes_declared_tool_through_trusted_binding() -> None:
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    calls = []
+    approvals = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (FakeModelProvider(), "fake")},
+        capability_bindings={
+            "repository.read": lambda args: calls.append(args) or "file contents"
+        },
+        approval_authorizer=lambda _config, capability, _args: (
+            approvals.append(capability) or True
+        ),
+    )
+
+    result = worker.invoke_tool("repository.read", {"path": "README.md"})
+
+    assert result == "file contents"
+    assert calls == [{"path": "README.md"}]
+    assert approvals == ["repository.read"]
+
+
+def test_configured_worker_does_not_invoke_capability_without_approval() -> None:
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (FakeModelProvider(), "fake")},
+        capability_bindings={
+            "repository.read": lambda args: calls.append(args) or "file contents"
+        },
+    )
+
+    with pytest.raises(CapabilityInvocationError, match="approval authorizer"):
+        worker.invoke_tool("repository.read", {"path": "README.md"})
+
+    assert calls == []
+
+
+def test_configured_worker_rejects_capability_not_declared_as_tool() -> None:
+    worker = activate_model_worker(
+        validated(),
+        model_selections={("local-gateway", "coding"): (FakeModelProvider(), "fake")},
+        capability_bindings={"repository.read": lambda _args: "contents"},
+    )
+
+    with pytest.raises(WorkerActivationError, match="not declared as a configured tool"):
+        worker.invoke_tool("repository.read", {"path": "README.md"})
