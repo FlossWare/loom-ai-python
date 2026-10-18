@@ -330,6 +330,8 @@ class FleetCoordinator:
         """Commit a result from the current lease, or return an existing terminal result."""
         with self._lock:
             task = self._get_task(task_id)
+            if result.worker_id != worker_id:
+                raise FleetConflictError("result Worker identity does not match lease holder")
             if task.status in _TERMINAL_TASK_STATES:
                 return task
             lease = task.lease
