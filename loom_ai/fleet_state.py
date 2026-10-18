@@ -159,8 +159,8 @@ class FileFleetStateStore:
                 "coordinator_id": coordinator_id,
                 "snapshot": dict(snapshot),
             }
-            return json.dumps(
-                envelope, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
+            return json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
         except (TypeError, ValueError) as exc:
             raise FleetStateError("fleet snapshot must be JSON serializable") from exc
