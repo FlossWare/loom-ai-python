@@ -15,6 +15,55 @@ def _freeze(values: Mapping[str, str]) -> Mapping[str, str]:
 
 
 @dataclass(frozen=True)
+class ModelToolDefinition:
+    """Provider-neutral definition of a tool a model is permitted to request."""
+
+    name: str
+    description: str
+    input_schema: Mapping[str, object] = field(
+        default_factory=lambda: {"type": "object"}
+    )
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("ModelToolDefinition name must not be empty")
+        if not self.description.strip():
+            raise ValueError("ModelToolDefinition description must not be empty")
+        if not isinstance(self.input_schema, Mapping):
+            raise ValueError("ModelToolDefinition input_schema must be an object")
+        if any(not isinstance(key, str) for key in self.input_schema):
+            raise ValueError("ModelToolDefinition schema keys must be strings")
+        try:
+            json.dumps(dict(self.input_schema), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "ModelToolDefinition input_schema must be JSON-compatible"
+            ) from exc
+        object.__setattr__(
+            self, "input_schema", MappingProxyType(dict(self.input_schema))
+        )
+
+
+@dataclass(frozen=True)
+class ModelToolResult:
+    """Structured result returned to the provider after a trusted tool invocation."""
+
+    call_id: str
+    capability_ref: str
+    result: object
+
+    def __post_init__(self) -> None:
+        if not self.call_id.strip():
+            raise ValueError("ModelToolResult call_id must not be empty")
+        if not self.capability_ref.strip():
+            raise ValueError("ModelToolResult capability_ref must not be empty")
+        try:
+            json.dumps(self.result, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ModelToolResult result must be JSON-compatible") from exc
+
+
+@dataclass(frozen=True)
 class ModelRequest:
     """Provider-neutral request supplied to a model provider.
 
@@ -26,6 +75,8 @@ class ModelRequest:
     model: str = "default"
     metadata: Mapping[str, str] = field(default_factory=dict)
     timeout_seconds: float | None = None
+    tools: tuple[ModelToolDefinition, ...] = ()
+    tool_results: tuple[ModelToolResult, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.prompt.strip():
@@ -41,7 +92,12 @@ class ModelRequest:
             raise ValueError(
                 "ModelRequest timeout_seconds must be a positive finite number"
             )
+        tool_names = [tool.name for tool in self.tools]
+        if len(tool_names) != len(set(tool_names)):
+            raise ValueError("ModelRequest tool names must be unique")
         object.__setattr__(self, "metadata", _freeze(self.metadata))
+        object.__setattr__(self, "tools", tuple(self.tools))
+        object.__setattr__(self, "tool_results", tuple(self.tool_results))
 
 
 @dataclass(frozen=True)
@@ -59,6 +115,8 @@ class ModelToolCall:
             raise ValueError("ModelToolCall capability_ref must not be empty")
         if not isinstance(self.arguments, Mapping):
             raise ValueError("ModelToolCall arguments must be an object")
+        if any(not isinstance(key, str) for key in self.arguments):
+            raise ValueError("ModelToolCall argument keys must be strings")
         try:
             json.dumps(dict(self.arguments), allow_nan=False)
         except (TypeError, ValueError) as exc:
