@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 import json
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from loom_ai.worker_configuration import ValidatedWorkerConfiguration
