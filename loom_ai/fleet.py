@@ -816,12 +816,16 @@ class FleetCoordinator:
                 worker_id="fleet-coordinator",
                 status=WorkerStatus.CANCELLED if cancelled else WorkerStatus.FAILED,
                 error=reason,
-                evidence=({"type": "fleet-task-terminated", "cause": termination_cause},),
+                evidence=(
+                    {"type": "fleet-task-terminated", "cause": termination_cause},
+                ),
                 metadata={"termination_cause": termination_cause},
             )
             updated = replace(
                 task,
-                status=FleetTaskStatus.CANCELLED if cancelled else FleetTaskStatus.FAILED,
+                status=FleetTaskStatus.CANCELLED
+                if cancelled
+                else FleetTaskStatus.FAILED,
                 lease=None,
                 result=result,
                 attempt_history=history,
