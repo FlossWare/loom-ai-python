@@ -13,12 +13,17 @@ from datetime import datetime
 from enum import Enum
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 from typing import Any
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.evaluation import EvaluationRecord, EvaluationStatus
+from loom_ai.fleet import FleetCoordinator
+from loom_ai.fleet_dispatch import FleetDispatchWorker
+from loom_ai.fleet_http import FleetHTTPServer
+from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateError,
@@ -615,6 +620,13 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
+        "--fleet-state-dir",
+        help="directory for durable distributed fleet task snapshots",
+    )
+    parser.add_argument("--fleet-host", default="127.0.0.1")
+    parser.add_argument("--fleet-port", type=int, default=8001)
+    parser.add_argument("--fleet-wait-timeout", type=float, default=900)
+    parser.add_argument(
         "--state-dir",
         help=(
             "directory for durable execution snapshots; without this option, "
@@ -622,6 +634,13 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
+    if args.fleet_state_dir and not args.state_dir:
+        parser.error("--fleet-state-dir requires --state-dir for durable execution identity")
+    if args.fleet_state_dir and not fleet_token:
+        parser.error("--fleet-state-dir requires LOOM_FLEET_TOKEN to be set")
+    if args.fleet_wait_timeout <= 0:
+        parser.error("--fleet-wait-timeout must be positive")
 
     class NoOpWorker:
         worker_id = "server"
@@ -642,16 +661,48 @@ def main() -> None:
             ArbiterDecision.REPLAN, reason=result.error or "worker failed"
         )
 
-    arbiter = Arbiter([NoOpWorker()], evaluate, max_retries=0)
+    fleet_coordinator = (
+        FleetCoordinator(state_store=FileFleetStateStore(args.fleet_state_dir))
+        if args.fleet_state_dir
+        else None
+    )
+    worker = (
+        FleetDispatchWorker(
+            fleet_coordinator,
+            required_capabilities=["loom.execute"],
+            wait_timeout_seconds=args.fleet_wait_timeout,
+        )
+        if fleet_coordinator is not None
+        else NoOpWorker()
+    )
+    arbiter = Arbiter([worker], evaluate, max_retries=0)
     execution_store = (
         FileExecutionStateStore(args.state_dir) if args.state_dir else None
     )
-    LoomServer(
-        arbiter,
-        host=args.host,
-        port=args.port,
-        execution_store=execution_store,
-    ).serve_forever()
+    fleet_server = None
+    fleet_thread = None
+    if fleet_coordinator is not None:
+        fleet_server = FleetHTTPServer(
+            fleet_coordinator,
+            bearer_token=fleet_token,
+            host=args.fleet_host,
+            port=args.fleet_port,
+        )
+        fleet_httpd = fleet_server.start()
+        fleet_thread = Thread(target=fleet_httpd.serve_forever, daemon=True)
+        fleet_thread.start()
+    try:
+        LoomServer(
+            arbiter,
+            host=args.host,
+            port=args.port,
+            execution_store=execution_store,
+        ).serve_forever()
+    finally:
+        if fleet_server is not None:
+            fleet_server.close()
+        if fleet_thread is not None:
+            fleet_thread.join(timeout=2)
 
 
 if __name__ == "__main__":
