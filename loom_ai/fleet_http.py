@@ -22,7 +22,7 @@ from loom_ai.fleet import (
     WorkerNotRegisteredError,
 )
 from loom_ai.intent import Intent
-from loom_ai.worker import CancellationToken, Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
 
 MAX_FLEET_PAYLOAD_BYTES = 10 * 1024 * 1024
 
@@ -57,7 +57,9 @@ class FleetHTTPServer:
 
         class Handler(BaseHTTPRequestHandler):
             def _send(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
-                body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+                body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode(
+                    "utf-8"
+                )
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -137,13 +139,19 @@ class FleetHTTPServer:
                         if not isinstance(intent_payload, dict):
                             raise ValueError("intent must be an object")
                         deadline_value = payload.get("deadline")
-                        deadline = datetime.fromisoformat(deadline_value) if isinstance(deadline_value, str) else None
+                        deadline = (
+                            datetime.fromisoformat(deadline_value)
+                            if isinstance(deadline_value, str)
+                            else None
+                        )
                         task = owner.coordinator.submit_task(
                             _intent_from_payload(intent_payload),
                             execution_id=_required_string(payload, "execution_id"),
                             task_id=payload.get("task_id"),
                             idempotency_key=payload.get("idempotency_key"),
-                            required_capabilities=_string_list(payload, "required_capabilities"),
+                            required_capabilities=_string_list(
+                                payload, "required_capabilities"
+                            ),
                             max_attempts=int(payload.get("max_attempts", 3)),
                             deadline=deadline,
                         )
@@ -170,7 +178,9 @@ class FleetHTTPServer:
                         if not isinstance(result_value, dict):
                             raise ValueError("result must be an object")
                         result = _result_from_payload(result_value)
-                        json.dumps(_result_payload(result), ensure_ascii=False, allow_nan=False)
+                        json.dumps(
+                            _result_payload(result), ensure_ascii=False, allow_nan=False
+                        )
                         task = owner.coordinator.submit_result(
                             task_id,
                             worker_id=_required_string(payload, "worker_id"),
@@ -264,7 +274,11 @@ class FleetWorkerAgent:
             raise FleetHTTPError("claimed task did not include a lease")
         intent = _intent_from_payload(task["intent"])
         deadline_value = task.get("deadline")
-        deadline = datetime.fromisoformat(deadline_value) if isinstance(deadline_value, str) else None
+        deadline = (
+            datetime.fromisoformat(deadline_value)
+            if isinstance(deadline_value, str)
+            else None
+        )
         context = WorkerContext(
             intent=intent,
             evidence=tuple(task.get("attempt_history", [])),
@@ -301,7 +315,9 @@ class FleetWorkerAgent:
                 worker_id=self.worker.worker_id,
                 status=WorkerStatus.FAILED,
                 error="worker invocation failed",
-                evidence=({"type": "worker-exception", "exception_type": type(exc).__name__},),
+                evidence=(
+                    {"type": "worker-exception", "exception_type": type(exc).__name__},
+                ),
                 metadata={"retryable": True},
             )
         finally:
