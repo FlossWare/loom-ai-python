@@ -88,18 +88,19 @@ class FleetDispatchWorker:
                     },
                 )
 
-            if context.cancellation_requested:
-                task = self.coordinator.cancel_task(
-                    task.task_id,
-                    reason=context.cancellation_token.reason,
-                    termination_cause="cancelled",
-                )
-                continue
-            if context.deadline_expired:
+            termination_cause = context.termination_cause
+            if termination_cause == "deadline_exceeded":
                 self.coordinator.cancel_task(
                     task.task_id,
                     reason="execution deadline exceeded while waiting for fleet Worker",
                     termination_cause="deadline_exceeded",
+                )
+                continue
+            if termination_cause == "cancelled":
+                self.coordinator.cancel_task(
+                    task.task_id,
+                    reason=context.cancellation_token.reason,
+                    termination_cause="cancelled",
                 )
                 continue
             remaining = expires_at - time.monotonic()
