@@ -1,3 +1,10 @@
+"""Python implementation of the FlossWare Loom AI-domain contracts.
+
+The canonical AI-domain semantics live in FlossWare/loom-ai. This package
+provides their Python realization. Generic Loom protocol semantics remain
+owned by FlossWare/loom.
+"""
+
 from loom_ai.fleet import (
     FleetCoordinator,
     FleetConflictError,
@@ -10,13 +17,6 @@ from loom_ai.fleet import (
     WorkerNotRegisteredError,
     WorkerRegistration,
 )
-"""Python implementation of the FlossWare Loom AI-domain contracts.
-
-The canonical AI-domain semantics live in FlossWare/loom-ai. This package
-provides their Python realization. Generic Loom protocol semantics remain
-owned by FlossWare/loom.
-"""
-
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.capability_runtime import CapabilityInvocationError, invoke_capability
 from loom_ai.configured_worker import (
