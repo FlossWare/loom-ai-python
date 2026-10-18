@@ -637,7 +637,9 @@ def main() -> None:
     args = parser.parse_args()
     fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
     if args.fleet_state_dir and not args.state_dir:
-        parser.error("--fleet-state-dir requires --state-dir for durable execution identity")
+        parser.error(
+            "--fleet-state-dir requires --state-dir for durable execution identity"
+        )
     if args.fleet_state_dir and not fleet_token:
         parser.error("--fleet-state-dir requires LOOM_FLEET_TOKEN to be set")
     if args.fleet_wait_timeout <= 0:
