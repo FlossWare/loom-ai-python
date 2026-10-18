@@ -308,7 +308,6 @@ class ConfiguredModelWorker:
                     {"termination_cause": "duration_limit", "attempts": attempt - 1},
                 )
 
-            remaining = self.configuration.limits.max_duration_seconds - elapsed
             if context.deadline is not None:
                 deadline_remaining = (
                     context.deadline.astimezone(timezone.utc)
@@ -324,7 +323,6 @@ class ConfiguredModelWorker:
                             "attempts": attempt - 1,
                         },
                     )
-                remaining = min(remaining, deadline_remaining)
 
             result = self._execute_model_loop(
                 configured_context,
