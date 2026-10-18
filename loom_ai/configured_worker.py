@@ -206,7 +206,7 @@ class ConfiguredModelWorker:
                         {"termination_cause": "unknown_capability"},
                     )
                 try:
-                    value = self.invoke_tool(call.capability_ref, call.arguments)
+                    value = self.invoke_tool(call.capability_ref, dict(call.arguments))
                     encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
                 except Exception:
                     return _failure(
@@ -369,8 +369,11 @@ class ConfiguredModelWorker:
                     },
                 )
 
-            if result.status is WorkerStatus.FAILED and tool_calls_used[0] > 0:
-                # Do not replay a failed turn after a tool may have produced side effects.
+            if result.status is WorkerStatus.FAILED and (
+                result.metadata.get("termination_cause") != "provider_failure"
+                or tool_calls_used[0] > 0
+            ):
+                # Only retry transient provider failures before any tool side effects.
                 return replace(
                     result,
                     evidence=tuple(evidence),
