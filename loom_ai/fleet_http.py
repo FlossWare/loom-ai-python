@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
 import json
-import time
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -67,7 +67,7 @@ class FleetHTTPServer:
 
             def _authorized(self) -> bool:
                 expected = f"Bearer {owner.bearer_token}"
-                if self.headers.get("Authorization") == expected:
+                if hmac.compare_digest(self.headers.get("Authorization", ""), expected):
                     return True
                 self._send(HTTPStatus.UNAUTHORIZED, {"error": {"code": "auth.denied"}})
                 return False
@@ -170,6 +170,7 @@ class FleetHTTPServer:
                         if not isinstance(result_value, dict):
                             raise ValueError("result must be an object")
                         result = _result_from_payload(result_value)
+                        json.dumps(_result_payload(result), ensure_ascii=False, allow_nan=False)
                         task = owner.coordinator.submit_result(
                             task_id,
                             worker_id=_required_string(payload, "worker_id"),
