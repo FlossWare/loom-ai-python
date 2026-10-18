@@ -32,7 +32,7 @@ class FleetHTTPError(RuntimeError):
 
 
 class FleetHTTPServer:
-    """HTTP binding for FleetCoordinator; protect remote deployments with TLS."""
+    """Authenticated worker transport; task submission remains inside Orchestrator."""
 
     def __init__(
         self,
