@@ -26,6 +26,10 @@ def invoke_capability(
         [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
     ]
     | None = None,
+    input_schema_validators: Mapping[
+        str, Callable[[Mapping[str, Any]], bool]
+    ]
+    | None = None,
 ) -> Any:
     """Invoke one capability only through a trusted runtime binding.
 
@@ -56,6 +60,23 @@ def invoke_capability(
         ) from None
     if not isinstance(safe_arguments, dict):
         raise CapabilityInvocationError("capability arguments must be a JSON object")
+    schema_ref = configuration.tool_input_schema_refs.get(capability_ref)
+    if schema_ref is not None:
+        validator = (input_schema_validators or {}).get(schema_ref)
+        if validator is None or not callable(validator):
+            raise CapabilityInvocationError(
+                "configured tool input schema has no trusted validator"
+            )
+        try:
+            valid_arguments = validator(safe_arguments)
+        except Exception as exc:
+            raise CapabilityInvocationError(
+                "capability input validation failed"
+            ) from exc
+        if valid_arguments is not True:
+            raise CapabilityInvocationError(
+                "capability arguments do not satisfy the configured input schema"
+            )
     if configuration.approval_required:
         if approval_authorizer is None:
             raise CapabilityInvocationError(
