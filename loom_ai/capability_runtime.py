@@ -26,9 +26,7 @@ def invoke_capability(
         [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
     ]
     | None = None,
-    input_schema_validators: Mapping[
-        str, Callable[[Mapping[str, Any]], bool]
-    ]
+    input_schema_validators: Mapping[str, Callable[[Mapping[str, Any]], bool]]
     | None = None,
 ) -> Any:
     """Invoke one capability only through a trusted runtime binding.
