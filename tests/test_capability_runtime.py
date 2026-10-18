@@ -239,7 +239,6 @@ def test_capability_invocation_rejects_python_tuple_as_json_array() -> None:
         )
 
 
-
 def test_capability_input_schema_requires_trusted_validator() -> None:
     config = configuration(approval_required=False)
     # Replace with a validated configuration that declares the schema.
