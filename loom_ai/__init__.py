@@ -1,3 +1,15 @@
+from loom_ai.fleet import (
+    FleetCoordinator,
+    FleetConflictError,
+    FleetError,
+    FleetTask,
+    FleetTaskStatus,
+    StaleLeaseError,
+    TaskLease,
+    WorkerLifecycle,
+    WorkerNotRegisteredError,
+    WorkerRegistration,
+)
 """Python implementation of the FlossWare Loom AI-domain contracts.
 
 The canonical AI-domain semantics live in FlossWare/loom-ai. This package
@@ -81,6 +93,16 @@ __all__ = [
     "ModelToolCall",
     "ModelToolDefinition",
     "ModelToolResult",
+    "FleetCoordinator",
+    "FleetConflictError",
+    "FleetError",
+    "FleetTask",
+    "FleetTaskStatus",
+    "StaleLeaseError",
+    "TaskLease",
+    "WorkerLifecycle",
+    "WorkerNotRegisteredError",
+    "WorkerRegistration",
     "ModelWorker",
     "Orchestrator",
     "OrchestratorSubmission",
