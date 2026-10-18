@@ -23,6 +23,7 @@ from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateError,
     ExecutionStateStore,
+    FileExecutionStateStore,
 )
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
