@@ -193,12 +193,15 @@ class FleetHTTPServer:
                         )
                         task = owner.coordinator.claim_task(worker_id)
                         self._send(
-                            HTTPStatus.OK, {"task": _task_payload(task) if task else None}
+                            HTTPStatus.OK,
+                            {"task": _task_payload(task) if task else None},
                         )
                         return
                     if path.startswith("/tasks/") and path.endswith("/renew"):
                         task_id = unquote(
-                            path.removeprefix("/tasks/").removesuffix("/renew").strip("/")
+                            path.removeprefix("/tasks/")
+                            .removesuffix("/renew")
+                            .strip("/")
                         )
                         lease = owner.coordinator.renew_lease(
                             task_id,
@@ -210,7 +213,9 @@ class FleetHTTPServer:
                         return
                     if path.startswith("/tasks/") and path.endswith("/result"):
                         task_id = unquote(
-                            path.removeprefix("/tasks/").removesuffix("/result").strip("/")
+                            path.removeprefix("/tasks/")
+                            .removesuffix("/result")
+                            .strip("/")
                         )
                         result_value = payload.get("result")
                         if not isinstance(result_value, dict):
