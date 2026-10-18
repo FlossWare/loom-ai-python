@@ -307,7 +307,7 @@ def test_model_response_accepts_provider_neutral_tool_calls() -> None:
 
     call = ModelToolCall(
         call_id="call-1",
-        capability_ref="repository.read",
+        tool_name="repository.read",
         arguments={"path": "README.md"},
     )
     response = ModelResponse(
@@ -326,11 +326,11 @@ def test_model_response_accepts_provider_neutral_tool_calls() -> None:
 @pytest.mark.parametrize(
     "call",
     [
-        {"call_id": "", "capability_ref": "repository.read", "arguments": {}},
-        {"call_id": "call-1", "capability_ref": "", "arguments": {}},
+        {"call_id": "", "tool_name": "repository.read", "arguments": {}},
+        {"call_id": "call-1", "tool_name": "", "arguments": {}},
         {
             "call_id": "call-1",
-            "capability_ref": "repository.read",
+            "tool_name": "repository.read",
             "arguments": {"bad": object()},
         },
     ],
@@ -388,6 +388,8 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
     raw["tools"] = [
         {
             "capability_ref": "repository.read",
+            "name": "read-file",
+            "description": "Read a repository file",
             "required": True,
             "input_schema_ref": "repository-read",
         }
@@ -405,7 +407,7 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
                 model="model-a",
                 kind="tool_calls",
                 tool_calls=(
-                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                    ModelToolCall("call-1", "read-file", {"path": "README.md"}),
                 ),
             ),
             ModelResponse(
@@ -440,15 +442,15 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
     followup = provider.requests[1]
     assert followup.tools == (
         ModelToolDefinition(
-            name="repository.read",
-            description="Configured capability repository.read",
+            name="read-file",
+            description="Read a repository file",
             input_schema=input_schema,
         ),
     )
     assert followup.tool_results == (
         ModelToolResult(
             call_id="call-1",
-            capability_ref="repository.read",
+            tool_name="read-file",
             result={"contents": "hello"},
         ),
     )
@@ -483,7 +485,7 @@ def test_configured_worker_rejects_model_requested_unconfigured_tool() -> None:
     result = worker.execute(WorkerContext(intent=Intent(goal="inspect repository")))
 
     assert result.status is WorkerStatus.FAILED
-    assert result.metadata["termination_cause"] == "unknown_capability"
+    assert result.metadata["termination_cause"] == "unknown_tool_name"
     assert calls == []
 
 
