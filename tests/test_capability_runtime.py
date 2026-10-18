@@ -213,3 +213,24 @@ def test_capability_invocation_rejects_non_finite_result_numbers() -> None:
             {},
             bindings={"repository.read": lambda args: {"number": float("nan")}},
         )
+
+
+
+def test_capability_invocation_rejects_non_string_json_object_keys() -> None:
+    with pytest.raises(CapabilityInvocationError, match="JSON-compatible"):
+        invoke_capability(
+            configuration(approval_required=False),
+            "repository.read",
+            {1: "not a JSON object key"},
+            bindings={"repository.read": lambda args: "must not run"},
+        )
+
+
+def test_capability_invocation_rejects_python_tuple_as_json_array() -> None:
+    with pytest.raises(CapabilityInvocationError, match="JSON-compatible"):
+        invoke_capability(
+            configuration(approval_required=False),
+            "repository.read",
+            {"values": (1, 2)},
+            bindings={"repository.read": lambda args: "must not run"},
+        )
