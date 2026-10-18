@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event, Thread
 from urllib.request import Request, urlopen
@@ -16,7 +17,7 @@ from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import Orchestrator
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import CancellationToken, WorkerContext, WorkerResult, WorkerStatus
 
 
 class _RemoteWorker:
@@ -158,3 +159,63 @@ def test_fleet_dispatch_times_out_without_leaving_a_live_lease(tmp_path: Path) -
     task = coordinator.observe_task(result.metadata["fleet_task_id"])
     assert task.status is FleetTaskStatus.FAILED
     assert task.lease is None
+
+
+def test_fleet_dispatch_propagates_cancellation_to_coordinator(tmp_path: Path) -> None:
+    coordinator = FleetCoordinator(
+        state_store=FileFleetStateStore(tmp_path / "fleet-state")
+    )
+    dispatch = FleetDispatchWorker(
+        coordinator,
+        required_capabilities=["loom.execute"],
+        wait_timeout_seconds=1,
+        poll_interval_seconds=0.005,
+    )
+    token = CancellationToken()
+    token.cancel("operator requested cancellation")
+
+    result = dispatch.execute(
+        WorkerContext(
+            intent=Intent(goal="must be cancelled", intent_id="intent-cancel"),
+            cancellation_token=token,
+            metadata={"execution_id": "execution-cancel", "phase": "initial"},
+        )
+    )
+
+    assert result.status is WorkerStatus.CANCELLED
+    task = coordinator.observe_task(result.metadata["fleet_task_id"])
+    assert task.status is FleetTaskStatus.CANCELLED
+    assert task.lease is None
+
+
+def test_fleet_dispatch_deadline_wins_over_preexisting_cancellation(
+    tmp_path: Path,
+) -> None:
+    coordinator = FleetCoordinator(
+        state_store=FileFleetStateStore(tmp_path / "fleet-state")
+    )
+    dispatch = FleetDispatchWorker(
+        coordinator,
+        required_capabilities=["loom.execute"],
+        wait_timeout_seconds=1,
+        poll_interval_seconds=0.005,
+    )
+    token = CancellationToken()
+    token.cancel("late cancellation")
+    expired_deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+    result = dispatch.execute(
+        WorkerContext(
+            intent=Intent(goal="deadline wins", intent_id="intent-deadline"),
+            deadline=expired_deadline,
+            cancellation_token=token,
+            metadata={"execution_id": "execution-deadline", "phase": "initial"},
+        )
+    )
+
+    assert result.status is WorkerStatus.FAILED
+    assert result.metadata["termination_cause"] == "deadline_exceeded"
+    task = coordinator.observe_task(result.metadata["fleet_task_id"])
+    assert task.status is FleetTaskStatus.FAILED
+    assert task.result is not None
+    assert task.result.metadata["termination_cause"] == "deadline_exceeded"
