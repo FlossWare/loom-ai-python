@@ -68,7 +68,8 @@ class ModelRequest:
     """Provider-neutral request supplied to a model provider.
 
     ``timeout_seconds`` is an optional positive finite transport budget that
-    provider adapters are required to honor when supplied.
+    provider adapters are required to honor when supplied. Tool definitions and
+    prior tool results remain structured fields rather than prompt text.
     """
 
     prompt: str
