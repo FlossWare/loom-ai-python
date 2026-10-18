@@ -118,3 +118,33 @@ def test_terminal_result_and_attempt_history_survive_restart(tmp_path) -> None:
     assert restored.result.output == {"documents": 3}
     assert restored.result.metadata == {"source": "test"}
     assert restored.attempt_history[0]["status"] == "success"
+
+
+
+def test_restart_marks_expired_running_task_as_deadline_exceeded(tmp_path) -> None:
+    store = FileFleetStateStore(tmp_path)
+    start = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    deadline = datetime(2030, 1, 1, 0, 0, 10, tzinfo=timezone.utc)
+    first = FleetCoordinator(
+        clock=lambda: start, state_store=store, coordinator_id="deadline-test"
+    )
+    first.register_worker("worker-a", "impl-a", ["repository.read"])
+    first.submit_task(
+        Intent(goal="read repository", intent_id="intent-deadline"),
+        execution_id="exec-deadline",
+        task_id="task-deadline",
+        required_capabilities=["repository.read"],
+        deadline=deadline,
+    )
+    leased = first.claim_task("worker-a")
+    assert leased is not None
+
+    recovered = FleetCoordinator(
+        clock=lambda: deadline,
+        state_store=store,
+        coordinator_id="deadline-test",
+    )
+    restored = recovered.observe_task("task-deadline")
+    assert restored.status is FleetTaskStatus.FAILED
+    assert restored.result is not None
+    assert restored.result.metadata["termination_cause"] == "deadline_exceeded"
