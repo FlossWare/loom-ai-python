@@ -329,7 +329,11 @@ class FleetCoordinator:
                             ),
                             metadata={"termination_cause": "attempts_exhausted"},
                         )
-                elif status is FleetTaskStatus.QUEUED and deadline is not None and now >= deadline:
+                elif (
+                    status is FleetTaskStatus.QUEUED
+                    and deadline is not None
+                    and now >= deadline
+                ):
                     status = FleetTaskStatus.FAILED
                     result_value = WorkerResult(
                         worker_id="fleet-coordinator",
