@@ -27,7 +27,10 @@ class _RemoteWorker:
         return WorkerResult(
             worker_id=self.worker_id,
             status=WorkerStatus.SUCCESS,
-            output={"goal": context.intent.goal, "task_id": context.metadata["task_id"]},
+            output={
+                "goal": context.intent.goal,
+                "task_id": context.metadata["task_id"],
+            },
             evidence=({"type": "remote-worker-completed"},),
         )
 
@@ -126,7 +129,10 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
         assert task.status is FleetTaskStatus.SUCCEEDED
         assert task.execution_id == execution_id
         assert task.result is not None
-        assert task.result.output["goal"] == "inspect a repository through a remote worker"
+        assert (
+            task.result.output["goal"]
+            == "inspect a repository through a remote worker"
+        )
     finally:
         stop_agent.set()
         agent_thread.join(timeout=2)
