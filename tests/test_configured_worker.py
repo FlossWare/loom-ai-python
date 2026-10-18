@@ -119,7 +119,9 @@ def test_output_limit_is_enforced_in_utf8_bytes() -> None:
     assert result.status is WorkerStatus.FAILED
     assert result.error == "configured output limit exceeded"
     assert result.metadata["termination_cause"] == "output_limit"
-    assert result.evidence[-1]["actual_bytes"] == 80
+    assert next(
+        item for item in result.evidence if item.get("type") == "configured-output-limit"
+    )["actual_bytes"] == 80
 
 
 def test_failed_calls_are_retried_only_to_configured_attempt_limit() -> None:
