@@ -155,7 +155,9 @@ class ConfiguredModelWorker:
             if cause is not None:
                 return _failure(
                     self.worker_id,
-                    "execution cancelled" if cause == "cancelled" else "deadline exceeded",
+                    "execution cancelled"
+                    if cause == "cancelled"
+                    else "deadline exceeded",
                     tuple(evidence),
                     {"termination_cause": cause, "model_turns": turn},
                     status=WorkerStatus.CANCELLED
