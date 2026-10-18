@@ -46,6 +46,7 @@ class ConfiguredModelWorker:
         | None = None,
         input_schema_validators: Mapping[str, Callable[[Mapping[str, Any]], bool]]
         | None = None,
+        tool_schemas: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         if not model or not model.strip():
             raise WorkerActivationError("resolved model name must not be empty")
@@ -55,6 +56,7 @@ class ConfiguredModelWorker:
         self._capability_bindings = dict(capability_bindings or {})
         self._approval_authorizer = approval_authorizer
         self._input_schema_validators = dict(input_schema_validators or {})
+        self._tool_schemas = dict(tool_schemas or {})
 
     def invoke_tool(self, capability_ref: str, arguments: Mapping[str, Any]) -> Any:
         """Invoke a configured tool through trusted runtime bindings.
@@ -103,6 +105,10 @@ class ConfiguredModelWorker:
             ModelToolDefinition(
                 name=capability_ref,
                 description=f"Configured capability {capability_ref}",
+                input_schema=self._tool_schemas.get(
+                    self.configuration.tool_input_schema_refs.get(capability_ref, ""),
+                    {"type": "object"},
+                ),
             )
             for capability_ref in sorted(self.configuration.tool_capabilities)
         )
@@ -528,6 +534,7 @@ def activate_model_worker(
     | None = None,
     input_schema_validators: Mapping[str, Callable[[Mapping[str, Any]], bool]]
     | None = None,
+    tool_schemas: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ConfiguredModelWorker:
     """Resolve the config's logical selection using a trusted runtime registry."""
     key = (configuration.gateway_ref, configuration.selection_ref)
@@ -546,6 +553,7 @@ def activate_model_worker(
         capability_bindings=capability_bindings,
         approval_authorizer=approval_authorizer,
         input_schema_validators=input_schema_validators,
+        tool_schemas=tool_schemas,
     )
 
 
