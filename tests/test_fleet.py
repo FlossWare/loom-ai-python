@@ -395,7 +395,7 @@ def test_duplicate_task_id_rejects_changed_capabilities_or_retry_policy() -> Non
             intent,
             execution_id="exec-duplicate",
             task_id="task-duplicate",
-            idempotency_key="idem-duplicate",
+            idempotency_key="idem-different",
             required_capabilities=["admin.run"],
             max_attempts=2,
         )
