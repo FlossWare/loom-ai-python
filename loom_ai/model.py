@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
+from dataclasses import dataclass, field
 from math import isfinite
 from types import MappingProxyType
 from typing import Mapping, Protocol, runtime_checkable
