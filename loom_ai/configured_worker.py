@@ -11,7 +11,6 @@ from typing import Any
 
 from loom_ai.capability_runtime import CapabilityBinding, invoke_capability
 from loom_ai.model import ModelProvider, ModelRequest
-from loom_ai.model_worker import ModelWorker
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 from loom_ai.worker_configuration import ValidatedWorkerConfiguration
 
@@ -367,6 +366,20 @@ class ConfiguredModelWorker:
                         "termination_cause": "duration_limit",
                         "attempts": attempt,
                         "elapsed_seconds": elapsed,
+                    },
+                )
+
+            if result.status is WorkerStatus.FAILED and tool_calls_used[0] > 0:
+                # Do not replay a failed turn after a tool may have produced side effects.
+                return replace(
+                    result,
+                    evidence=tuple(evidence),
+                    metadata={
+                        **result.metadata,
+                        "configured_worker_id": self.worker_id,
+                        "attempts": attempt,
+                        "elapsed_seconds": elapsed,
+                        "tool_calls": tool_calls_used[0],
                     },
                 )
 
