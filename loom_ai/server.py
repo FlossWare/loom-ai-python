@@ -528,7 +528,7 @@ class LoomServer:
                 expected = owner.fleet_token
                 supplied = self.headers.get("Authorization", "")
                 if expected is None or not hmac.compare_digest(
-                    supplied, f"Bearer {expected}"
+                    supplied.encode("utf-8"), f"Bearer {expected}".encode("utf-8")
                 ):
                     self._send(
                         HTTPStatus.UNAUTHORIZED,
