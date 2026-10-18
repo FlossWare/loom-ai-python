@@ -130,8 +130,7 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
         assert task.execution_id == execution_id
         assert task.result is not None
         assert (
-            task.result.output["goal"]
-            == "inspect a repository through a remote worker"
+            task.result.output["goal"] == "inspect a repository through a remote worker"
         )
     finally:
         stop_agent.set()
