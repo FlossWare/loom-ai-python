@@ -48,9 +48,7 @@ class ConfiguredModelWorker:
         self._capability_bindings = dict(capability_bindings or {})
         self._approval_authorizer = approval_authorizer
 
-    def invoke_tool(
-        self, capability_ref: str, arguments: Mapping[str, Any]
-    ) -> Any:
+    def invoke_tool(self, capability_ref: str, arguments: Mapping[str, Any]) -> Any:
         """Invoke a configured tool through trusted runtime bindings.
 
         Model text responses are not interpreted as tool calls. Callers that
