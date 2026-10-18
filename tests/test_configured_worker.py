@@ -211,7 +211,6 @@ def test_cancellation_during_provider_call_overrides_success() -> None:
     )
 
 
-
 def test_configured_worker_invokes_declared_tool_through_trusted_binding() -> None:
     raw = raw_config()
     raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
