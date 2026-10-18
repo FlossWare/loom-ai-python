@@ -324,3 +324,78 @@ def test_task_deadline_rejects_late_result() -> None:
             ),
         )
     assert coordinator.observe_task("task-1").status is FleetTaskStatus.FAILED
+
+
+def test_idempotency_key_deduplicates_submissions_without_explicit_task_id() -> None:
+    coordinator, _ = setup_coordinator()
+    intent = Intent(goal="index a document", intent_id="intent-idempotent")
+    first = coordinator.submit_task(
+        intent,
+        execution_id="exec-idempotent",
+        idempotency_key="request-123",
+        required_capabilities=["index.write"],
+    )
+    duplicate = coordinator.submit_task(
+        intent,
+        execution_id="exec-idempotent",
+        idempotency_key="request-123",
+        required_capabilities=["index.write"],
+    )
+
+    assert duplicate == first
+    assert len(coordinator._tasks) == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"required_capabilities": ["admin.delete"]},
+        {"max_attempts": 4},
+        {"execution_id": "another-execution"},
+        {"intent": Intent(goal="different goal", intent_id="intent-idempotent")},
+    ],
+)
+def test_idempotency_key_rejects_changed_submission_payload(changes: dict) -> None:
+    coordinator, _ = setup_coordinator()
+    intent = Intent(goal="index a document", intent_id="intent-idempotent")
+    coordinator.submit_task(
+        intent,
+        execution_id="exec-idempotent",
+        idempotency_key="request-123",
+        required_capabilities=["index.write"],
+        max_attempts=3,
+    )
+    payload = {
+        "intent": intent,
+        "execution_id": "exec-idempotent",
+        "idempotency_key": "request-123",
+        "required_capabilities": ["index.write"],
+        "max_attempts": 3,
+    }
+    payload.update(changes)
+
+    with pytest.raises(FleetConflictError, match="idempotency key"):
+        coordinator.submit_task(**payload)
+
+
+def test_duplicate_task_id_rejects_changed_capabilities_or_retry_policy() -> None:
+    coordinator, _ = setup_coordinator()
+    intent = Intent(goal="run tests", intent_id="intent-duplicate")
+    coordinator.submit_task(
+        intent,
+        execution_id="exec-duplicate",
+        task_id="task-duplicate",
+        idempotency_key="idem-duplicate",
+        required_capabilities=["test.run"],
+        max_attempts=2,
+    )
+
+    with pytest.raises(FleetConflictError, match="task identity"):
+        coordinator.submit_task(
+            intent,
+            execution_id="exec-duplicate",
+            task_id="task-duplicate",
+            idempotency_key="idem-duplicate",
+            required_capabilities=["admin.run"],
+            max_attempts=2,
+        )
