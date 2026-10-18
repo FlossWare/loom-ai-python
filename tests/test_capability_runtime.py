@@ -168,7 +168,9 @@ def test_capability_invocation_deep_copies_json_arguments() -> None:
         config,
         "repository.read",
         source,
-        bindings={"repository.read": lambda args: received.append(args) or {"ok": True}},
+        bindings={
+            "repository.read": lambda args: received.append(args) or {"ok": True}
+        },
     )
 
     assert received == [{"nested": {"items": [1, 2]}}]
