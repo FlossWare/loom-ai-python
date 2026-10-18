@@ -39,9 +39,7 @@ class ConfiguredModelWorker:
             [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
         ]
         | None = None,
-        input_schema_validators: Mapping[
-            str, Callable[[Mapping[str, Any]], bool]
-        ]
+        input_schema_validators: Mapping[str, Callable[[Mapping[str, Any]], bool]]
         | None = None,
     ) -> None:
         if not model or not model.strip():
@@ -250,9 +248,7 @@ def activate_model_worker(
         [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
     ]
     | None = None,
-    input_schema_validators: Mapping[
-        str, Callable[[Mapping[str, Any]], bool]
-    ]
+    input_schema_validators: Mapping[str, Callable[[Mapping[str, Any]], bool]]
     | None = None,
 ) -> ConfiguredModelWorker:
     """Resolve the config's logical selection using a trusted runtime registry."""
