@@ -263,3 +263,34 @@ def test_configured_worker_rejects_capability_not_declared_as_tool() -> None:
         WorkerActivationError, match="not declared as a configured tool"
     ):
         worker.invoke_tool("repository.read", {"path": "README.md"})
+
+
+
+def test_configured_worker_enforces_declared_input_schema() -> None:
+    raw = raw_config()
+    raw["tools"] = [
+        {
+            "capability_ref": "repository.read",
+            "required": True,
+            "input_schema_ref": "repository-read-input",
+        }
+    ]
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (FakeModelProvider(), "fake")},
+        capability_bindings={
+            "repository.read": lambda args: calls.append(args) or "contents"
+        },
+        approval_authorizer=lambda *_: True,
+        input_schema_validators={
+            "repository-read-input": lambda args: isinstance(args.get("path"), str)
+        },
+    )
+
+    with pytest.raises(CapabilityInvocationError, match="do not satisfy"):
+        worker.invoke_tool("repository.read", {"path": 123})
+
+    assert calls == []
+    assert worker.invoke_tool("repository.read", {"path": "README.md"}) == "contents"
+    assert calls == [{"path": "README.md"}]
