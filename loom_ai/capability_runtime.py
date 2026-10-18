@@ -93,7 +93,6 @@ def invoke_capability(
     return json.loads(encoded_result.decode("utf-8"))
 
 
-
 def _assert_json_value(value: Any, path: str = "$") -> None:
     """Reject Python values that JSON encoding would silently coerce."""
     if value is None or isinstance(value, (str, bool, int)):
