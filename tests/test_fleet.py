@@ -399,3 +399,40 @@ def test_duplicate_task_id_rejects_changed_capabilities_or_retry_policy() -> Non
             required_capabilities=["admin.run"],
             max_attempts=2,
         )
+
+
+def test_cancel_running_task_fences_late_worker_result() -> None:
+    coordinator = FleetCoordinator()
+    coordinator.register_worker("worker-a", "impl-a", ["repository.read"])
+    coordinator.submit_task(
+        Intent(goal="read repository", intent_id="intent-cancel"),
+        execution_id="execution-cancel",
+        task_id="task-cancel",
+        required_capabilities=["repository.read"],
+    )
+    leased = coordinator.claim_task("worker-a")
+    assert leased is not None and leased.lease is not None
+    lease = leased.lease
+
+    cancelled = coordinator.cancel_task("task-cancel", reason="caller cancelled")
+
+    assert cancelled.status is FleetTaskStatus.CANCELLED
+    assert cancelled.lease is None
+    assert cancelled.result is not None
+    assert cancelled.result.status is WorkerStatus.CANCELLED
+    assert cancelled.result.metadata["termination_cause"] == "cancelled"
+
+    late = coordinator.submit_result(
+        "task-cancel",
+        worker_id="worker-a",
+        lease_id=lease.lease_id,
+        generation=lease.generation,
+        result=WorkerResult(
+            worker_id="worker-a",
+            status=WorkerStatus.SUCCESS,
+            output={"stale": True},
+        ),
+    )
+    assert late.status is FleetTaskStatus.CANCELLED
+    assert late.result is not None
+    assert late.result.status is WorkerStatus.CANCELLED
