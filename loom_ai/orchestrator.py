@@ -152,7 +152,9 @@ class Orchestrator:
             self._active[actual_id] = token
 
         try:
-            result = self._execute_with_controls(intent, absolute_deadline, token, execution_id=actual_id)
+            result = self._execute_with_controls(
+                intent, absolute_deadline, token, execution_id=actual_id
+            )
         except Exception as exc:
             with self._lock:
                 control_cause = _control_cause(token, absolute_deadline)
