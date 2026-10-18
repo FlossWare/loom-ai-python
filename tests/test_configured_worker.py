@@ -307,7 +307,7 @@ def test_model_response_accepts_provider_neutral_tool_calls() -> None:
 
     call = ModelToolCall(
         call_id="call-1",
-        capability_ref="repository.read",
+        tool_name="repository.read",
         arguments={"path": "README.md"},
     )
     response = ModelResponse(
@@ -326,11 +326,11 @@ def test_model_response_accepts_provider_neutral_tool_calls() -> None:
 @pytest.mark.parametrize(
     "call",
     [
-        {"call_id": "", "capability_ref": "repository.read", "arguments": {}},
-        {"call_id": "call-1", "capability_ref": "", "arguments": {}},
+        {"call_id": "", "tool_name": "repository.read", "arguments": {}},
+        {"call_id": "call-1", "tool_name": "", "arguments": {}},
         {
             "call_id": "call-1",
-            "capability_ref": "repository.read",
+            "tool_name": "repository.read",
             "arguments": {"bad": object()},
         },
     ],
