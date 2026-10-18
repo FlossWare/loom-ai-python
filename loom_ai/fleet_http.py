@@ -154,7 +154,13 @@ class FleetHTTPServer:
                             .strip("/")
                         )
                         worker = owner.coordinator.drain_worker(worker_id)
-                        self._send(HTTPStatus.OK, {"worker_id": worker.worker_id, "lifecycle": worker.lifecycle.value})
+                        self._send(
+                            HTTPStatus.OK,
+                            {
+                                "worker_id": worker.worker_id,
+                                "lifecycle": worker.lifecycle.value,
+                            },
+                        )
                         return
                     if path == "/tasks":
                         intent_payload = payload.get("intent")
