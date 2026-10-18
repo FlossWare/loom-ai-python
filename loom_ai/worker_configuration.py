@@ -41,6 +41,7 @@ class ValidatedWorkerConfiguration:
     approval_required: bool
     limits: WorkerLimits
     metadata: Mapping[str, Any]
+    tool_capabilities: frozenset[str] = frozenset()
 
 
 def validate_worker_configuration(
@@ -284,6 +285,7 @@ def validate_worker_configuration(
         approval_required=approval_required,
         limits=WorkerLimits(**limit_values),
         metadata=_freeze_metadata(metadata),
+        tool_capabilities=frozenset(tool_capabilities),
     )
 
 
