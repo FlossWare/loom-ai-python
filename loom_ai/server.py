@@ -7,7 +7,9 @@ durable lifecycle, and continuation are delegated to Orchestrator.
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
+import os
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from enum import Enum
@@ -19,6 +21,13 @@ from uuid import uuid4
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.evaluation import EvaluationRecord, EvaluationStatus
+from loom_ai.fleet import (
+    FleetConflictError,
+    FleetCoordinator,
+    FleetError,
+    StaleLeaseError,
+    WorkerNotRegisteredError,
+)
 from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateError,
@@ -53,6 +62,8 @@ class LoomServer:
         port: int = 8000,
         execution_store: ExecutionStateStore | None = None,
         orchestrator: Orchestrator | None = None,
+        fleet_coordinator: FleetCoordinator | None = None,
+        fleet_token: str | None = None,
     ) -> None:
         if orchestrator is not None:
             if arbiter is not None or execution_store is not None:
@@ -67,6 +78,10 @@ class LoomServer:
                 arbiter,
                 execution_store=execution_store,
             )
+        if fleet_coordinator is not None and (fleet_token is None or not fleet_token.strip()):
+            raise ValueError("fleet_token is required when fleet coordination is enabled")
+        self.fleet_coordinator = fleet_coordinator
+        self.fleet_token = fleet_token
         self.host = host
         self.port = port
         self._server: _LoomHTTPServer | None = None
@@ -138,6 +153,8 @@ class LoomServer:
 
             def do_GET(self) -> None:  # noqa: N802
                 request_path = urlsplit(self.path).path
+                if self._fleet_request("GET", request_path):
+                    return
                 if request_path == "/health":
                     self._send(HTTPStatus.OK, {"status": "ok"})
                     return
@@ -183,6 +200,8 @@ class LoomServer:
 
             def do_POST(self) -> None:  # noqa: N802
                 request_path = urlsplit(self.path).path
+                if self._fleet_request("POST", request_path):
+                    return
                 if request_path.startswith("/executions/") and request_path.endswith(
                     "/evaluations"
                 ):
@@ -496,6 +515,164 @@ class LoomServer:
                     response["execution_id"] = submission.execution_id
                 self._send(HTTPStatus.OK, response)
 
+            def _fleet_request(self, method: str, path: str) -> bool:
+                if not path.startswith("/fleet/"):
+                    return False
+                coordinator = owner.fleet_coordinator
+                if coordinator is None:
+                    self._send(
+                        HTTPStatus.NOT_FOUND,
+                        _error_payload("fleet.unavailable", "fleet coordination is not configured"),
+                    )
+                    return True
+                expected = owner.fleet_token
+                supplied = self.headers.get("Authorization", "")
+                if expected is None or not hmac.compare_digest(
+                    supplied, f"Bearer {expected}"
+                ):
+                    self._send(
+                        HTTPStatus.UNAUTHORIZED,
+                        _error_payload("fleet.unauthorized", "valid Bearer token required"),
+                    )
+                    return True
+
+                try:
+                    payload: dict[str, Any] = {}
+                    if method == "POST":
+                        raw_length = self.headers.get("Content-Length", "0")
+                        length = int(raw_length)
+                        if length < 0:
+                            raise ValueError("Content-Length must be non-negative")
+                        if length > MAX_PAYLOAD_BYTES:
+                            self._send(
+                                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                                _error_payload("request.payload_too_large", "payload too large"),
+                            )
+                            return True
+                        raw_body = self.rfile.read(length).decode("utf-8") if length else ""
+                        decoded = json.loads(raw_body) if raw_body else {}
+                        if not isinstance(decoded, dict):
+                            raise TypeError("request body must be a JSON object")
+                        payload = decoded
+
+                    if method == "POST" and path == "/fleet/workers/register":
+                        worker_id = _required_string(payload, "worker_id")
+                        implementation_id = _required_string(payload, "implementation_id")
+                        capabilities = payload.get("capabilities", [])
+                        if not isinstance(capabilities, list) or not all(
+                            isinstance(item, str) for item in capabilities
+                        ):
+                            raise TypeError("capabilities must be an array of strings")
+                        lease_seconds = payload.get("lease_seconds", 15)
+                        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int):
+                            raise TypeError("lease_seconds must be an integer")
+                        registration = coordinator.register_worker(
+                            worker_id,
+                            implementation_id,
+                            capabilities,
+                            lease_seconds=lease_seconds,
+                        )
+                        self._send(HTTPStatus.OK, {"worker": asdict(registration)})
+                        return True
+
+                    parts = [unquote(part) for part in path.strip("/").split("/")]
+                    if method == "GET" and len(parts) == 3 and parts[:2] == ["fleet", "workers"]:
+                        self._send(
+                            HTTPStatus.OK,
+                            {"worker": asdict(coordinator.observe_worker(parts[2]))},
+                        )
+                        return True
+                    if method == "GET" and len(parts) == 3 and parts[:2] == ["fleet", "tasks"]:
+                        self._send(
+                            HTTPStatus.OK,
+                            {"task": asdict(coordinator.observe_task(parts[2]))},
+                        )
+                        return True
+                    if method == "POST" and len(parts) == 4 and parts[:2] == ["fleet", "workers"]:
+                        worker_id, operation = parts[2], parts[3]
+                        if operation == "heartbeat":
+                            self._send(
+                                HTTPStatus.OK,
+                                {"worker": asdict(coordinator.heartbeat(worker_id))},
+                            )
+                            return True
+                        if operation == "claim":
+                            task = coordinator.claim_task(worker_id)
+                            self._send(
+                                HTTPStatus.OK,
+                                {"task": asdict(task) if task is not None else None},
+                            )
+                            return True
+                    if method == "POST" and len(parts) == 4 and parts[:2] == ["fleet", "tasks"] and parts[3] == "result":
+                        task_id = parts[2]
+                        worker_id = _required_string(payload, "worker_id")
+                        lease_id = _required_string(payload, "lease_id")
+                        generation = payload.get("generation")
+                        if isinstance(generation, bool) or not isinstance(generation, int):
+                            raise TypeError("generation must be an integer")
+                        status = WorkerStatus(_required_string(payload, "status"))
+                        evidence = payload.get("evidence", [])
+                        metadata = payload.get("metadata", {})
+                        if not isinstance(evidence, list) or not all(
+                            isinstance(item, dict) for item in evidence
+                        ):
+                            raise TypeError("evidence must be an array of objects")
+                        if not isinstance(metadata, dict):
+                            raise TypeError("metadata must be an object")
+                        error = payload.get("error", "")
+                        if not isinstance(error, str):
+                            raise TypeError("error must be a string")
+                        retryable = payload.get("retryable", False)
+                        if not isinstance(retryable, bool):
+                            raise TypeError("retryable must be a boolean")
+                        result = WorkerResult(
+                            worker_id=worker_id,
+                            status=status,
+                            output=payload.get("output"),
+                            evidence=tuple(evidence),
+                            error=error,
+                            metadata=metadata,
+                        )
+                        task = coordinator.submit_result(
+                            task_id,
+                            worker_id=worker_id,
+                            lease_id=lease_id,
+                            generation=generation,
+                            result=result,
+                            retryable=retryable,
+                        )
+                        self._send(HTTPStatus.OK, {"task": asdict(task)})
+                        return True
+                    self._send(
+                        HTTPStatus.NOT_FOUND,
+                        _error_payload("route.not_found", "fleet route not found"),
+                    )
+                    return True
+                except (KeyError, WorkerNotRegisteredError) as exc:
+                    self._send(
+                        HTTPStatus.NOT_FOUND,
+                        _error_payload("fleet.not_found", str(exc)),
+                    )
+                    return True
+                except (FleetConflictError, StaleLeaseError) as exc:
+                    self._send(
+                        HTTPStatus.CONFLICT,
+                        _error_payload("fleet.conflict", str(exc)),
+                    )
+                    return True
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    self._send(
+                        HTTPStatus.BAD_REQUEST,
+                        _error_payload("request.invalid", str(exc)),
+                    )
+                    return True
+                except FleetError as exc:
+                    self._send(
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                        _error_payload("fleet.state_error", str(exc)),
+                    )
+                    return True
+
             def log_message(self, _format: str, *_args: Any) -> None:
                 return
 
@@ -596,12 +773,21 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
     }
 
 
+def _required_string(payload: dict[str, Any], field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
 def _error_payload(category: str, message: str, **details: Any) -> dict[str, Any]:
     """Build a backward-compatible error body with a stable machine category."""
     return {"category": category, "error": message, **details}
 
 
 def _json_default(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value):
@@ -614,6 +800,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Loom HTTP server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--fleet-state-dir",
+        help="directory for durable fleet coordinator snapshots",
+    )
     parser.add_argument(
         "--state-dir",
         help=(
@@ -646,11 +836,23 @@ def main() -> None:
     execution_store = (
         FileExecutionStateStore(args.state_dir) if args.state_dir else None
     )
+    fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
+    fleet_coordinator = None
+    if args.fleet_state_dir:
+        if not fleet_token:
+            parser.error("--fleet-state-dir requires LOOM_FLEET_TOKEN to be set")
+        from loom_ai.fleet_state import FileFleetStateStore
+
+        fleet_coordinator = FleetCoordinator(
+            state_store=FileFleetStateStore(args.fleet_state_dir)
+        )
     LoomServer(
         arbiter,
         host=args.host,
         port=args.port,
         execution_store=execution_store,
+        fleet_coordinator=fleet_coordinator,
+        fleet_token=fleet_token if fleet_coordinator is not None else None,
     ).serve_forever()
 
 
