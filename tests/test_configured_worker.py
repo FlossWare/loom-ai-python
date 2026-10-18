@@ -388,6 +388,8 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
     raw["tools"] = [
         {
             "capability_ref": "repository.read",
+            "name": "read-file",
+            "description": "Read a repository file",
             "required": True,
             "input_schema_ref": "repository-read",
         }
@@ -405,7 +407,7 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
                 model="model-a",
                 kind="tool_calls",
                 tool_calls=(
-                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                    ModelToolCall("call-1", "read-file", {"path": "README.md"}),
                 ),
             ),
             ModelResponse(
@@ -440,15 +442,15 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
     followup = provider.requests[1]
     assert followup.tools == (
         ModelToolDefinition(
-            name="repository.read",
-            description="Configured capability repository.read",
+            name="read-file",
+            description="Read a repository file",
             input_schema=input_schema,
         ),
     )
     assert followup.tool_results == (
         ModelToolResult(
             call_id="call-1",
-            tool_name="repository.read",
+            tool_name="read-file",
             result={"contents": "hello"},
         ),
     )
