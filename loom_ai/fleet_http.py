@@ -180,7 +180,11 @@ class FleetHTTPServer:
                         self._send(HTTPStatus.CREATED, _task_payload(task))
                         return
                     if path.startswith("/workers/") and path.endswith("/claim"):
-                        worker_id = unquote(path.removeprefix("/workers/").removesuffix("/claim").strip("/"))
+                        worker_id = unquote(
+                            path.removeprefix("/workers/")
+                            .removesuffix("/claim")
+                            .strip("/")
+                        )
                         task = owner.coordinator.claim_task(worker_id)
                         self._send(
                             HTTPStatus.OK, {"task": _task_payload(task) if task else None}
