@@ -154,7 +154,6 @@ def test_restart_marks_expired_running_task_as_deadline_exceeded(tmp_path) -> No
     assert restored.result.metadata["termination_cause"] == "deadline_exceeded"
 
 
-
 def test_persistence_failure_fail_stops_coordinator(tmp_path) -> None:
     class ToggleStore:
         def __init__(self) -> None:
