@@ -265,7 +265,6 @@ def test_configured_worker_rejects_capability_not_declared_as_tool() -> None:
         worker.invoke_tool("repository.read", {"path": "README.md"})
 
 
-
 def test_configured_worker_enforces_declared_input_schema() -> None:
     raw = raw_config()
     raw["tools"] = [
