@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socketserver
+import sys
 from tempfile import TemporaryDirectory
 from threading import Thread
 from urllib.error import HTTPError, URLError
@@ -245,3 +246,43 @@ def test_server_persists_and_continues_execution_state() -> None:
             instance.shutdown()
             instance.server_close()
             thread.join(timeout=2)
+
+
+def test_server_cli_can_enable_durable_execution_state(
+    monkeypatch, tmp_path
+) -> None:
+    from loom_ai import server as server_module
+
+    captured = {}
+
+    def stop_after_configuration(server) -> None:
+        captured["durable"] = server.orchestrator.durable_enabled
+        captured["root"] = server.execution_store.root
+
+    monkeypatch.setattr(server_module.LoomServer, "serve_forever", stop_after_configuration)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["loom-server", "--state-dir", str(tmp_path)],
+    )
+
+    server_module.main()
+
+    assert captured["durable"] is True
+    assert captured["root"] == tmp_path
+
+
+def test_server_cli_keeps_durability_opt_in(monkeypatch) -> None:
+    from loom_ai import server as server_module
+
+    captured = {}
+
+    def stop_after_configuration(server) -> None:
+        captured["durable"] = server.orchestrator.durable_enabled
+
+    monkeypatch.setattr(server_module.LoomServer, "serve_forever", stop_after_configuration)
+    monkeypatch.setattr(sys, "argv", ["loom-server"])
+
+    server_module.main()
+
+    assert captured["durable"] is False
