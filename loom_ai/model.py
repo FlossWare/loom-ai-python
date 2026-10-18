@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from math import isfinite
 from types import MappingProxyType
 from typing import Mapping, Protocol, runtime_checkable
@@ -44,8 +45,30 @@ class ModelRequest:
 
 
 @dataclass(frozen=True)
+class ModelToolCall:
+    """Provider-neutral request to invoke one explicitly configured capability."""
+
+    call_id: str
+    capability_ref: str
+    arguments: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.call_id.strip():
+            raise ValueError("ModelToolCall call_id must not be empty")
+        if not self.capability_ref.strip():
+            raise ValueError("ModelToolCall capability_ref must not be empty")
+        if not isinstance(self.arguments, Mapping):
+            raise ValueError("ModelToolCall arguments must be an object")
+        try:
+            json.dumps(dict(self.arguments), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ModelToolCall arguments must be JSON-compatible") from exc
+        object.__setattr__(self, "arguments", MappingProxyType(dict(self.arguments)))
+
+
+@dataclass(frozen=True)
 class ModelResponse:
-    """Provider-neutral model result with safe execution provenance."""
+    """Provider-neutral final response or structured capability request."""
 
     text: str
     provider: str
@@ -53,10 +76,21 @@ class ModelResponse:
     finish_reason: str = "stop"
     metadata: Mapping[str, str] = field(default_factory=dict)
     provenance: Mapping[str, str] = field(default_factory=dict)
+    kind: str = "final"
+    tool_calls: tuple[ModelToolCall, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.text.strip():
-            raise ValueError("ModelResponse text must not be empty")
+        if self.kind not in {"final", "tool_calls"}:
+            raise ValueError("ModelResponse kind must be 'final' or 'tool_calls'")
+        if self.kind == "final" and not self.text.strip():
+            raise ValueError("final ModelResponse text must not be empty")
+        if self.kind == "tool_calls" and (self.text.strip() or not self.tool_calls):
+            raise ValueError("tool-call ModelResponse requires calls and no text")
+        if self.kind == "final" and self.tool_calls:
+            raise ValueError("final ModelResponse must not contain tool calls")
+        call_ids = [call.call_id for call in self.tool_calls]
+        if len(call_ids) != len(set(call_ids)):
+            raise ValueError("ModelResponse tool call identifiers must be unique")
         if not self.provider.strip():
             raise ValueError("ModelResponse provider must not be empty")
         if not self.model.strip():
@@ -65,6 +99,7 @@ class ModelResponse:
             raise ValueError("ModelResponse finish_reason must not be empty")
         object.__setattr__(self, "metadata", _freeze(self.metadata))
         object.__setattr__(self, "provenance", _freeze(self.provenance))
+        object.__setattr__(self, "tool_calls", tuple(self.tool_calls))
 
 
 @runtime_checkable
