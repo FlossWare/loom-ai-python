@@ -23,6 +23,7 @@ from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateError,
     ExecutionStateStore,
+    FileExecutionStateStore,
 )
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
@@ -613,6 +614,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Loom HTTP server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--state-dir",
+        help=(
+            "directory for durable execution snapshots; without this option, "
+            "execution observation and continuation are unavailable"
+        ),
+    )
     args = parser.parse_args()
 
     class NoOpWorker:
@@ -635,7 +643,15 @@ def main() -> None:
         )
 
     arbiter = Arbiter([NoOpWorker()], evaluate, max_retries=0)
-    LoomServer(arbiter, host=args.host, port=args.port).serve_forever()
+    execution_store = (
+        FileExecutionStateStore(args.state_dir) if args.state_dir else None
+    )
+    LoomServer(
+        arbiter,
+        host=args.host,
+        port=args.port,
+        execution_store=execution_store,
+    ).serve_forever()
 
 
 if __name__ == "__main__":
