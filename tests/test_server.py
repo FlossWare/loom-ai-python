@@ -280,7 +280,9 @@ def test_server_cli_keeps_durability_opt_in(monkeypatch) -> None:
     def stop_after_configuration(server) -> None:
         captured["durable"] = server.orchestrator.durable_enabled
 
-    monkeypatch.setattr(server_module.LoomServer, "serve_forever", stop_after_configuration)
+    monkeypatch.setattr(
+        server_module.LoomServer, "serve_forever", stop_after_configuration
+    )
     monkeypatch.setattr(sys, "argv", ["loom-server"])
 
     server_module.main()
