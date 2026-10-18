@@ -403,7 +403,7 @@ class FleetCoordinator:
         """Refresh liveness without reviving an expired task lease."""
         with self._lock:
             worker = self._workers.get(worker_id)
-            if workeresult_value is None:
+            if worker is None:
                 raise WorkerNotRegisteredError("worker is not registered")
             if worker.lifecycle in {WorkerLifecycle.STOPPED, WorkerLifecycle.UNHEALTHY}:
                 raise WorkerNotRegisteredError("worker is not available")
@@ -517,7 +517,7 @@ class FleetCoordinator:
         with self._lock:
             self.expire_leases()
             worker = self._available_worker(worker_id)
-            if workeresult_value is None:
+            if worker is None:
                 return None
             candidates = sorted(
                 (
@@ -581,7 +581,7 @@ class FleetCoordinator:
                 self.expire_leases()
                 raise StaleLeaseError("lease is expired or no longer current")
             worker = self._available_worker(worker_id)
-            if workeresult_value is None:
+            if worker is None:
                 raise WorkerNotRegisteredError("worker is not available")
             self._workers[worker_id] = replace(worker, last_heartbeat_at=now)
             renewed = replace(
@@ -683,7 +683,7 @@ class FleetCoordinator:
             lease = task.lease
             if task.status is not FleetTaskStatus.RUNNING or lease is None:
                 raise StaleLeaseError("task has no active lease")
-            if workeresult_value.worker_id != lease.worker_id:
+            if worker.worker_id != lease.worker_id:
                 raise StaleLeaseError("Worker identity does not match lease")
             context = WorkerContext(
                 intent=task.intent,
@@ -700,7 +700,7 @@ class FleetCoordinator:
             result = worker.execute(context)
         except Exception as exc:
             result = WorkerResult(
-                worker_id=workeresult_value.worker_id,
+                worker_id=worker.worker_id,
                 status=WorkerStatus.FAILED,
                 error="worker invocation failed",
                 evidence=(
@@ -791,13 +791,13 @@ class FleetCoordinator:
         """Return the current registration snapshot."""
         with self._lock:
             worker = self._workers.get(worker_id)
-            if workeresult_value is None:
+            if worker is None:
                 raise WorkerNotRegisteredError("worker is not registered")
             return worker
 
     def _available_worker(self, worker_id: str) -> WorkerRegistration | None:
         worker = self._workers.get(worker_id)
-        if workeresult_value is None:
+        if worker is None:
             raise WorkerNotRegisteredError("worker is not registered")
         if worker.lifecycle is not WorkerLifecycle.READY:
             return None
@@ -816,7 +816,7 @@ class FleetCoordinator:
     ) -> WorkerRegistration:
         with self._lock:
             worker = self._workers.get(worker_id)
-            if workeresult_value is None:
+            if worker is None:
                 raise WorkerNotRegisteredError("worker is not registered")
             updated = replace(
                 worker, lifecycle=lifecycle, last_heartbeat_at=self._now()
