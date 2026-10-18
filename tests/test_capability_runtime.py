@@ -429,13 +429,12 @@ def test_validators_and_approvers_cannot_mutate_executed_arguments() -> None:
         "repository.read",
         {"path": "README.md"},
         bindings={
-            "repository.read": lambda arguments: executed.append(arguments)
-            or "contents"
+            "repository.read": lambda arguments: (
+                executed.append(arguments) or "contents"
+            )
         },
         approval_authorizer=mutate_and_approve,
-        input_schema_validators={
-            "repository-read-input": mutate_and_validate
-        },
+        input_schema_validators={"repository-read-input": mutate_and_validate},
     )
 
     assert executed == [{"path": "README.md"}]
