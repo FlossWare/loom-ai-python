@@ -78,9 +78,7 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
     stop_agent = Event()
 
     def run_agent() -> None:
-        while not stop_agent.is_set():
-            agent.run_once()
-            stop_agent.wait(0.01)
+        agent.run_forever(stop_agent)
 
     agent_thread = Thread(target=run_agent, daemon=True)
     agent_thread.start()
