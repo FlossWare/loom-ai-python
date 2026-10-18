@@ -209,34 +209,66 @@ class FleetCoordinator:
             deadline.tzinfo is None or deadline.utcoffset() is None
         ):
             raise ValueError("deadline must include an explicit UTC offset")
-        task_id = task_id or str(uuid4())
-        idempotency_key = idempotency_key or task_id
-        if not task_id.strip() or not idempotency_key.strip():
-            raise ValueError("task_id and idempotency_key must not be empty")
+        if task_id is not None and not task_id.strip():
+            raise ValueError("task_id must not be empty")
+        if idempotency_key is not None and not idempotency_key.strip():
+            raise ValueError("idempotency_key must not be empty")
         required = tuple(sorted(set(required_capabilities)))
         if any(not capability.strip() for capability in required):
             raise ValueError("required capabilities must not contain empty values")
+
         with self._lock:
-            existing = self._tasks.get(task_id)
+            if idempotency_key is not None:
+                prior = next(
+                    (
+                        item
+                        for item in self._tasks.values()
+                        if item.idempotency_key == idempotency_key
+                    ),
+                    None,
+                )
+                if prior is not None:
+                    same_submission = (
+                        prior.execution_id == execution_id
+                        and prior.intent == intent
+                        and prior.required_capabilities == required
+                        and prior.max_attempts == max_attempts
+                        and prior.deadline == deadline
+                    )
+                    if not same_submission or (
+                        task_id is not None and task_id != prior.task_id
+                    ):
+                        raise FleetConflictError(
+                            "idempotency key was reused for a different submission"
+                        )
+                    return prior
+
+            actual_task_id = task_id or str(uuid4())
+            actual_idempotency_key = idempotency_key or actual_task_id
+            existing = self._tasks.get(actual_task_id)
             if existing is not None:
                 if (
-                    existing.idempotency_key == idempotency_key
+                    existing.idempotency_key == actual_idempotency_key
                     and existing.execution_id == execution_id
-                    and existing.intent.intent_id == intent.intent_id
+                    and existing.intent == intent
+                    and existing.required_capabilities == required
+                    and existing.max_attempts == max_attempts
+                    and existing.deadline == deadline
                 ):
                     return existing
                 raise FleetConflictError("task identity already exists")
+
             task = FleetTask(
-                task_id=task_id,
+                task_id=actual_task_id,
                 execution_id=execution_id,
-                idempotency_key=idempotency_key,
+                idempotency_key=actual_idempotency_key,
                 intent=intent,
                 required_capabilities=required,
                 max_attempts=max_attempts,
                 deadline=deadline,
                 submitted_at=self._now(),
             )
-            self._tasks[task_id] = task
+            self._tasks[actual_task_id] = task
             return task
 
     def claim_task(self, worker_id: str) -> FleetTask | None:
