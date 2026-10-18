@@ -20,7 +20,7 @@ from loom_ai.fleet_http import FleetHTTPServer
 from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.orchestrator import Orchestrator
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerResult
 
 
 _WORKER_MODULE = """
@@ -154,7 +154,9 @@ def test_rest_execution_completes_in_a_separate_worker_process(tmp_path: Path) -
         assert dispatched["metadata"]["fleet_execution_id"] == execution_id
         task_id = dispatched["metadata"]["fleet_task_id"]
 
-        with urlopen(f"{base_url}/executions/{execution_id}", timeout=3) as result_response:
+        with urlopen(
+            f"{base_url}/executions/{execution_id}", timeout=3
+        ) as result_response:
             execution = json.load(result_response)
         assert execution["status"] == "success"
         assert execution["lifecycle"] == "completed"
