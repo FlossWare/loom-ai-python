@@ -148,7 +148,7 @@ def test_failed_calls_are_retried_only_to_configured_attempt_limit() -> None:
 def test_duration_budget_rejects_slow_synchronous_provider_result(monkeypatch) -> None:
     import loom_ai.configured_worker as configured_worker_module
 
-    clock = iter([0.0, 0.0, 0.0, 2.0])
+    clock = iter([0.0, 0.0, 0.0, 2.0, 2.0])
     monkeypatch.setattr(configured_worker_module, "monotonic", lambda: next(clock))
     provider = RecordingProvider(["too late"])
     raw = raw_config()
@@ -174,7 +174,7 @@ def test_model_request_rejects_invalid_timeout(timeout) -> None:
 def test_retry_provider_timeout_uses_remaining_budget(monkeypatch) -> None:
     import loom_ai.configured_worker as configured_worker_module
 
-    clock = iter([0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 4.0])
+    clock = iter([0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 4.0, 4.0])
     monkeypatch.setattr(configured_worker_module, "monotonic", lambda: next(clock))
     provider = RecordingProvider([RuntimeError("temporary"), "recovered"])
     worker = activate_model_worker(
