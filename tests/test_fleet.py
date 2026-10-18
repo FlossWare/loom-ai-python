@@ -44,7 +44,9 @@ class EchoWorker:
             worker_id=self.worker_id,
             status=WorkerStatus.SUCCESS,
             output=self.output,
-            evidence=({"type": "worker.completed", "intent_id": context.intent.intent_id},),
+            evidence=(
+                {"type": "worker.completed", "intent_id": context.intent.intent_id},
+            ),
         )
 
 
@@ -81,8 +83,12 @@ def test_capability_matching_leases_task_and_commits_result() -> None:
 
 def test_expired_lease_is_requeued_and_stale_result_is_rejected() -> None:
     coordinator, clock = setup_coordinator()
-    coordinator.register_worker("worker-a", "impl-a", ["repository.read"], lease_seconds=2)
-    coordinator.register_worker("worker-b", "impl-b", ["repository.read"], lease_seconds=5)
+    coordinator.register_worker(
+        "worker-a", "impl-a", ["repository.read"], lease_seconds=2
+    )
+    coordinator.register_worker(
+        "worker-b", "impl-b", ["repository.read"], lease_seconds=5
+    )
     coordinator.submit_task(
         Intent(goal="read a file"),
         execution_id="exec-1",
