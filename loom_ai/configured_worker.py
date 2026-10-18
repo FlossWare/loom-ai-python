@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from time import monotonic
-from typing import Mapping
+from typing import Any
 
+from loom_ai.capability_runtime import CapabilityBinding, invoke_capability
 from loom_ai.model import ModelProvider
 from loom_ai.model_worker import ModelWorker
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
@@ -32,12 +34,37 @@ class ConfiguredModelWorker:
         configuration: ValidatedWorkerConfiguration,
         provider: ModelProvider,
         model: str,
+        capability_bindings: Mapping[str, CapabilityBinding] | None = None,
+        approval_authorizer: Callable[
+            [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
+        ]
+        | None = None,
     ) -> None:
         if not model or not model.strip():
             raise WorkerActivationError("resolved model name must not be empty")
         self.configuration = configuration
         self._provider = provider
         self._model = model
+        self._capability_bindings = dict(capability_bindings or {})
+        self._approval_authorizer = approval_authorizer
+
+    def invoke_tool(self, capability_ref: str, arguments: Mapping[str, Any]) -> Any:
+        """Invoke a configured tool through trusted runtime bindings.
+
+        Model text responses are not interpreted as tool calls. Callers that
+        implement a separate tool-call protocol may use this explicit boundary.
+        """
+        if capability_ref not in self.configuration.tool_capabilities:
+            raise WorkerActivationError(
+                "capability is not declared as a configured tool"
+            )
+        return invoke_capability(
+            self.configuration,
+            capability_ref,
+            arguments,
+            bindings=self._capability_bindings,
+            approval_authorizer=self._approval_authorizer,
+        )
 
     @property
     def worker_id(self) -> str:
@@ -212,6 +239,11 @@ def activate_model_worker(
     configuration: ValidatedWorkerConfiguration,
     *,
     model_selections: Mapping[tuple[str, str], tuple[ModelProvider, str]],
+    capability_bindings: Mapping[str, CapabilityBinding] | None = None,
+    approval_authorizer: Callable[
+        [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
+    ]
+    | None = None,
 ) -> ConfiguredModelWorker:
     """Resolve the config's logical selection using a trusted runtime registry."""
     key = (configuration.gateway_ref, configuration.selection_ref)
@@ -223,7 +255,13 @@ def activate_model_worker(
         ) from exc
     if not isinstance(provider.provider_id, str) or not provider.provider_id.strip():
         raise WorkerActivationError("resolved provider has no stable provider_id")
-    return ConfiguredModelWorker(configuration, provider, model)
+    return ConfiguredModelWorker(
+        configuration,
+        provider,
+        model,
+        capability_bindings=capability_bindings,
+        approval_authorizer=approval_authorizer,
+    )
 
 
 def _failure(
