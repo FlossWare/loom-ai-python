@@ -22,7 +22,14 @@ from loom_ai.execution_state import (
 )
 from loom_ai.fake_model_provider import FakeModelProvider
 from loom_ai.intent import Intent, IntentParseError
-from loom_ai.model import ModelProvider, ModelRequest, ModelResponse, ModelToolCall
+from loom_ai.model import (
+    ModelProvider,
+    ModelRequest,
+    ModelResponse,
+    ModelToolCall,
+    ModelToolDefinition,
+    ModelToolResult,
+)
 from loom_ai.model_worker import ModelWorker
 from loom_ai.orchestrator import (
     CancellationResult,
@@ -72,6 +79,8 @@ __all__ = [
     "ModelRequest",
     "ModelResponse",
     "ModelToolCall",
+    "ModelToolDefinition",
+    "ModelToolResult",
     "ModelWorker",
     "Orchestrator",
     "OrchestratorSubmission",
