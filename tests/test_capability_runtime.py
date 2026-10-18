@@ -11,14 +11,18 @@ from loom_ai.capability_runtime import (
 from loom_ai.worker_configuration import validate_worker_configuration
 
 
-def configuration(*, approval_required: bool = True):
+def configuration(*, approval_required: bool = True, declare_tool: bool = True):
     raw = {
         "schema_version": "0.1",
         "worker_id": "bounded-worker",
         "purpose": "Run bounded tasks",
         "model_gateway": {"gateway_ref": "gateway", "selection_ref": "coding"},
         "instructions": ["Use approved capabilities only"],
-        "tools": [{"capability_ref": "repository.read", "required": True}],
+        "tools": (
+            [{"capability_ref": "repository.read", "required": True}]
+            if declare_tool
+            else []
+        ),
         "capabilities": ["repository.read"],
         "policy": {"policy_ref": "safe", "approval_required": approval_required},
         "limits": {
@@ -141,3 +145,14 @@ def test_approved_capability_invocation_calls_binding() -> None:
 
     assert result == "contents:README.md"
     assert approved == ["repository.read"]
+
+
+
+def test_declared_capability_without_tool_binding_is_not_executable() -> None:
+    with pytest.raises(CapabilityInvocationError, match="not declared as an executable"):
+        invoke_capability(
+            configuration(approval_required=False, declare_tool=False),
+            "repository.read",
+            {},
+            bindings={"repository.read": lambda args: "must not run"},
+        )
