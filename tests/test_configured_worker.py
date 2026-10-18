@@ -119,7 +119,14 @@ def test_output_limit_is_enforced_in_utf8_bytes() -> None:
     assert result.status is WorkerStatus.FAILED
     assert result.error == "configured output limit exceeded"
     assert result.metadata["termination_cause"] == "output_limit"
-    assert result.evidence[-1]["actual_bytes"] == 80
+    assert (
+        next(
+            item
+            for item in result.evidence
+            if item.get("type") == "configured-output-limit"
+        )["actual_bytes"]
+        == 80
+    )
 
 
 def test_failed_calls_are_retried_only_to_configured_attempt_limit() -> None:
@@ -141,7 +148,7 @@ def test_failed_calls_are_retried_only_to_configured_attempt_limit() -> None:
 def test_duration_budget_rejects_slow_synchronous_provider_result(monkeypatch) -> None:
     import loom_ai.configured_worker as configured_worker_module
 
-    clock = iter([0.0, 0.0, 2.0])
+    clock = iter([0.0, 0.0, 0.0, 2.0, 2.0])
     monkeypatch.setattr(configured_worker_module, "monotonic", lambda: next(clock))
     provider = RecordingProvider(["too late"])
     raw = raw_config()
@@ -167,7 +174,7 @@ def test_model_request_rejects_invalid_timeout(timeout) -> None:
 def test_retry_provider_timeout_uses_remaining_budget(monkeypatch) -> None:
     import loom_ai.configured_worker as configured_worker_module
 
-    clock = iter([0.0, 0.0, 3.0, 3.0, 4.0])
+    clock = iter([0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 4.0, 4.0])
     monkeypatch.setattr(configured_worker_module, "monotonic", lambda: next(clock))
     provider = RecordingProvider([RuntimeError("temporary"), "recovered"])
     worker = activate_model_worker(
@@ -293,3 +300,357 @@ def test_configured_worker_enforces_declared_input_schema() -> None:
     assert calls == []
     assert worker.invoke_tool("repository.read", {"path": "README.md"}) == "contents"
     assert calls == [{"path": "README.md"}]
+
+
+def test_model_response_accepts_provider_neutral_tool_calls() -> None:
+    from loom_ai import ModelToolCall
+
+    call = ModelToolCall(
+        call_id="call-1",
+        capability_ref="repository.read",
+        arguments={"path": "README.md"},
+    )
+    response = ModelResponse(
+        text="",
+        provider="recording",
+        model="model-a",
+        kind="tool_calls",
+        tool_calls=(call,),
+    )
+
+    assert response.kind == "tool_calls"
+    assert response.tool_calls == (call,)
+    assert response.tool_calls[0].arguments["path"] == "README.md"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        {"call_id": "", "capability_ref": "repository.read", "arguments": {}},
+        {"call_id": "call-1", "capability_ref": "", "arguments": {}},
+        {
+            "call_id": "call-1",
+            "capability_ref": "repository.read",
+            "arguments": {"bad": object()},
+        },
+    ],
+)
+def test_model_tool_call_rejects_invalid_contract_values(call) -> None:
+    from loom_ai import ModelToolCall
+
+    with pytest.raises(ValueError):
+        ModelToolCall(**call)
+
+
+def test_model_response_rejects_duplicate_tool_call_ids() -> None:
+    from loom_ai import ModelToolCall
+
+    call = ModelToolCall("same-id", "repository.read", {})
+    with pytest.raises(ValueError, match="identifiers must be unique"):
+        ModelResponse(
+            text="",
+            provider="recording",
+            model="model-a",
+            kind="tool_calls",
+            tool_calls=(call, call),
+        )
+
+
+def test_model_response_requires_explicit_final_or_tool_call_kind() -> None:
+    with pytest.raises(ValueError, match="kind must be"):
+        ModelResponse(
+            text="answer",
+            provider="recording",
+            model="model-a",
+            kind="implicit-tools",
+        )
+
+
+class StructuredRecordingProvider:
+    provider_id = "recording"
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        self.requests.append(request)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+def test_configured_worker_executes_structured_tool_and_returns_to_model() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [
+        {
+            "capability_ref": "repository.read",
+            "required": True,
+            "input_schema_ref": "repository-read",
+        }
+    ]
+    input_schema = {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"],
+    }
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                ),
+            ),
+            ModelResponse(
+                text="README says hello.",
+                provider="recording",
+                model="model-a",
+            ),
+        ]
+    )
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={
+            "repository.read": lambda args: calls.append(args) or {"contents": "hello"}
+        },
+        approval_authorizer=lambda _config, _capability, _args: True,
+        input_schema_validators={
+            "repository-read": lambda args: isinstance(args.get("path"), str)
+        },
+        tool_schemas={"repository-read": input_schema},
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="summarize README")))
+
+    assert result.status is WorkerStatus.SUCCESS
+    assert result.output == "README says hello."
+    assert calls == [{"path": "README.md"}]
+    assert result.metadata["tool_calls"] == 1
+    from loom_ai import ModelToolDefinition, ModelToolResult
+
+    followup = provider.requests[1]
+    assert followup.tools == (
+        ModelToolDefinition(
+            name="repository.read",
+            description="Configured capability repository.read",
+            input_schema=input_schema,
+        ),
+    )
+    assert followup.tool_results == (
+        ModelToolResult(
+            call_id="call-1",
+            capability_ref="repository.read",
+            result={"contents": "hello"},
+        ),
+    )
+    assert "Tool observations" not in followup.prompt
+    assert any(item.get("type") == "tool-call-completed" for item in result.evidence)
+
+
+def test_configured_worker_rejects_model_requested_unconfigured_tool() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(ModelToolCall("call-1", "shell.exec", {"command": "id"}),),
+            ),
+        ]
+    )
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={"repository.read": lambda args: calls.append(args)},
+        approval_authorizer=lambda _config, _capability, _args: True,
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="inspect repository")))
+
+    assert result.status is WorkerStatus.FAILED
+    assert result.metadata["termination_cause"] == "unknown_capability"
+    assert calls == []
+
+
+def test_configured_worker_enforces_structured_tool_call_budget() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["limits"]["max_attempts"] = 1
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                ),
+            ),
+        ]
+    )
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={"repository.read": lambda _args: "contents"},
+        approval_authorizer=lambda _config, _capability, _args: True,
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="inspect repository")))
+
+    assert result.status is WorkerStatus.FAILED
+    assert result.metadata["termination_cause"] == "turn_limit"
+    assert result.metadata["tool_calls"] == 1
+
+
+def test_configured_worker_executes_multiple_tool_calls_in_response_order() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "a.txt"}),
+                    ModelToolCall("call-2", "repository.read", {"path": "b.txt"}),
+                ),
+            ),
+            ModelResponse(
+                text="Both files were inspected.",
+                provider="recording",
+                model="model-a",
+            ),
+        ]
+    )
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={
+            "repository.read": lambda args: calls.append(args) or {"found": True}
+        },
+        approval_authorizer=lambda _config, _capability, _args: True,
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="inspect two files")))
+
+    assert result.status is WorkerStatus.SUCCESS
+    assert calls == [{"path": "a.txt"}, {"path": "b.txt"}]
+    assert result.metadata["tool_calls"] == 2
+
+
+def test_configured_worker_does_not_execute_tool_after_provider_cancels() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    token = CancellationToken()
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                ),
+            ),
+        ]
+    )
+
+    class CancellingProvider(StructuredRecordingProvider):
+        def generate(self, request: ModelRequest) -> ModelResponse:
+            response = super().generate(request)
+            token.cancel("cancel before tool execution")
+            return response
+
+    provider = CancellingProvider(provider.responses)
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={"repository.read": lambda args: calls.append(args)},
+        approval_authorizer=lambda _config, _capability, _args: True,
+    )
+
+    result = worker.execute(
+        WorkerContext(
+            intent=Intent(goal="inspect repository"), cancellation_token=token
+        )
+    )
+
+    assert result.status is WorkerStatus.CANCELLED
+    assert calls == []
+
+
+def test_configured_worker_does_not_execute_tool_without_required_approval() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                ),
+            ),
+        ]
+    )
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={"repository.read": lambda args: calls.append(args)},
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="inspect repository")))
+
+    assert result.status is WorkerStatus.FAILED
+    assert result.metadata["termination_cause"] == "tool_invocation_failed"
+    assert calls == []
+
+
+def test_model_request_rejects_duplicate_tool_definition_names() -> None:
+    from loom_ai import ModelToolDefinition
+
+    tool = ModelToolDefinition("repository.read", "Read a repository file")
+    with pytest.raises(ValueError, match="tool names must be unique"):
+        ModelRequest(
+            prompt="inspect repository",
+            tools=(tool, tool),
+        )
+
+
+def test_model_tool_result_rejects_non_json_values() -> None:
+    from loom_ai import ModelToolResult
+
+    with pytest.raises(ValueError, match="JSON-compatible"):
+        ModelToolResult("call-1", "repository.read", object())
