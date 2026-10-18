@@ -133,7 +133,6 @@ def _assert_json_value(value: Any, path: str = "$") -> None:
     raise ValueError(f"{path} is not a JSON value")
 
 
-
 def _clone_json(value: Any) -> Any:
     """Return a detached JSON-compatible copy before crossing trust boundaries."""
     return json.loads(json.dumps(value, allow_nan=False, separators=(",", ":")))
