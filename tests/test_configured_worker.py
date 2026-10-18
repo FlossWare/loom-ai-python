@@ -489,3 +489,119 @@ def test_configured_worker_enforces_structured_tool_call_budget() -> None:
     assert result.status is WorkerStatus.FAILED
     assert result.metadata["termination_cause"] == "turn_limit"
     assert result.metadata["tool_calls"] == 1
+
+
+def test_configured_worker_executes_multiple_tool_calls_in_response_order() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "a.txt"}),
+                    ModelToolCall("call-2", "repository.read", {"path": "b.txt"}),
+                ),
+            ),
+            ModelResponse(
+                text="Both files were inspected.",
+                provider="recording",
+                model="model-a",
+            ),
+        ]
+    )
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={
+            "repository.read": lambda args: calls.append(args) or {"found": True}
+        },
+        approval_authorizer=lambda _config, _capability, _args: True,
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="inspect two files")))
+
+    assert result.status is WorkerStatus.SUCCESS
+    assert calls == [{"path": "a.txt"}, {"path": "b.txt"}]
+    assert result.metadata["tool_calls"] == 2
+
+
+def test_configured_worker_does_not_execute_tool_after_provider_cancels() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    token = CancellationToken()
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                ),
+            ),
+        ]
+    )
+
+    class CancellingProvider(StructuredRecordingProvider):
+        def generate(self, request: ModelRequest) -> ModelResponse:
+            response = super().generate(request)
+            token.cancel("cancel before tool execution")
+            return response
+
+    provider = CancellingProvider(provider.responses)
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={"repository.read": lambda args: calls.append(args)},
+        approval_authorizer=lambda _config, _capability, _args: True,
+    )
+
+    result = worker.execute(
+        WorkerContext(intent=Intent(goal="inspect repository"), cancellation_token=token)
+    )
+
+    assert result.status is WorkerStatus.CANCELLED
+    assert calls == []
+
+
+def test_configured_worker_does_not_execute_tool_without_required_approval() -> None:
+    from loom_ai import ModelToolCall
+
+    raw = raw_config()
+    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    provider = StructuredRecordingProvider(
+        [
+            ModelResponse(
+                text="",
+                provider="recording",
+                model="model-a",
+                kind="tool_calls",
+                tool_calls=(
+                    ModelToolCall("call-1", "repository.read", {"path": "README.md"}),
+                ),
+            ),
+        ]
+    )
+    calls = []
+    worker = activate_model_worker(
+        validated(raw),
+        model_selections={("local-gateway", "coding"): (provider, "model-a")},
+        capability_bindings={"repository.read": lambda args: calls.append(args)},
+    )
+
+    result = worker.execute(WorkerContext(intent=Intent(goal="inspect repository")))
+
+    assert result.status is WorkerStatus.FAILED
+    assert result.metadata["termination_cause"] == "tool_invocation_failed"
+    assert calls == []
