@@ -37,9 +37,7 @@ def invoke_capability(
     if not isinstance(capability_ref, str) or not capability_ref.strip():
         raise CapabilityInvocationError("capability reference must be non-empty")
     if capability_ref not in configuration.capabilities:
-        raise CapabilityInvocationError(
-            "capability is not authorized by Worker config"
-        )
+        raise CapabilityInvocationError("capability is not authorized by Worker config")
     if capability_ref not in configuration.tool_capabilities:
         raise CapabilityInvocationError(
             "capability is not declared as an executable Worker tool"
