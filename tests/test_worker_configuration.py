@@ -243,3 +243,25 @@ def test_duplicate_tool_capability_is_rejected() -> None:
 
     with pytest.raises(WorkerConfigurationError, match="duplicates a configured tool"):
         validate(value)
+
+
+def test_configured_tool_name_maps_to_trusted_capability() -> None:
+    value = config()
+    value["tools"][0]["name"] = "read-file"
+    value["tools"][0]["description"] = "Read a file from the repository"
+
+    result = validate(value)
+
+    assert result.tool_name_to_capability["read-file"] == "repository.read"
+    assert result.tool_descriptions["read-file"] == "Read a file from the repository"
+
+
+def test_duplicate_configured_tool_names_are_rejected() -> None:
+    value = config()
+    value["tools"][0]["name"] = "read"
+    value["tools"][1]["name"] = "read"
+
+    with pytest.raises(
+        WorkerConfigurationError, match="name duplicates a configured tool"
+    ):
+        validate(value)

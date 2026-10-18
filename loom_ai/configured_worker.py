@@ -103,14 +103,16 @@ class ConfiguredModelWorker:
         evidence: list[Mapping[str, object]] = []
         tool_definitions = tuple(
             ModelToolDefinition(
-                name=capability_ref,
-                description=f"Configured capability {capability_ref}",
+                name=tool_name,
+                description=self.configuration.tool_descriptions[tool_name],
                 input_schema=self._tool_schemas.get(
                     self.configuration.tool_input_schema_refs.get(capability_ref, ""),
                     {"type": "object"},
                 ),
             )
-            for capability_ref in sorted(self.configuration.tool_capabilities)
+            for tool_name, capability_ref in sorted(
+                self.configuration.tool_name_to_capability.items()
+            )
         )
         tool_results: list[ModelToolResult] = []
         max_tool_calls = self.configuration.limits.max_attempts
@@ -264,22 +266,25 @@ class ConfiguredModelWorker:
                 )
 
             for call in response.tool_calls:
-                if call.capability_ref not in self.configuration.tool_capabilities:
+                capability_ref = self.configuration.tool_name_to_capability.get(
+                    call.tool_name
+                )
+                if capability_ref is None:
                     return _failure(
                         self.worker_id,
-                        "model requested an unconfigured tool",
+                        "model requested an unconfigured tool name",
                         tuple(evidence)
                         + (
                             {
                                 "type": "tool-call-rejected",
                                 "call_id": call.call_id,
-                                "reason": "unknown_capability",
+                                "reason": "unknown_tool_name",
                             },
                         ),
-                        {"termination_cause": "unknown_capability"},
+                        {"termination_cause": "unknown_tool_name"},
                     )
                 try:
-                    value = self.invoke_tool(call.capability_ref, dict(call.arguments))
+                    value = self.invoke_tool(capability_ref, dict(call.arguments))
                     encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
                 except Exception:
                     return _failure(
@@ -290,7 +295,7 @@ class ConfiguredModelWorker:
                             {
                                 "type": "tool-call-failed",
                                 "call_id": call.call_id,
-                                "capability_ref": call.capability_ref,
+                                "capability_ref": capability_ref,
                             },
                         ),
                         {"termination_cause": "tool_invocation_failed"},
@@ -315,7 +320,7 @@ class ConfiguredModelWorker:
                 tool_results.append(
                     ModelToolResult(
                         call_id=call.call_id,
-                        capability_ref=call.capability_ref,
+                        tool_name=call.tool_name,
                         result=json.loads(encoded),
                     )
                 )
@@ -323,7 +328,7 @@ class ConfiguredModelWorker:
                     {
                         "type": "tool-call-completed",
                         "call_id": call.call_id,
-                        "capability_ref": call.capability_ref,
+                        "tool_name": call.tool_name,
                         "result_bytes": output_bytes,
                     }
                 )
