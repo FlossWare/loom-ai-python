@@ -46,6 +46,7 @@ def invoke_capability(
     if not isinstance(arguments, Mapping):
         raise CapabilityInvocationError("capability arguments must be an object")
     try:
+        _assert_json_value(arguments)
         safe_arguments = json.loads(
             json.dumps(arguments, allow_nan=False, separators=(",", ":"))
         )
@@ -79,6 +80,7 @@ def invoke_capability(
         raise CapabilityInvocationError("capability invocation failed") from exc
 
     try:
+        _assert_json_value(result)
         encoded_result = json.dumps(
             result, allow_nan=False, separators=(",", ":")
         ).encode("utf-8")
@@ -89,3 +91,25 @@ def invoke_capability(
     if len(encoded_result) > configuration.limits.max_output_bytes:
         raise CapabilityInvocationError("capability result exceeds output byte limit")
     return json.loads(encoded_result.decode("utf-8"))
+
+
+
+def _assert_json_value(value: Any, path: str = "$") -> None:
+    """Reject Python values that JSON encoding would silently coerce."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError(f"{path} must be finite")
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{path} object keys must be strings")
+            _assert_json_value(item, f"{path}.{key}")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _assert_json_value(item, f"{path}[{index}]")
+        return
+    raise ValueError(f"{path} is not a JSON value")
