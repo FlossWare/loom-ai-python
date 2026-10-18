@@ -149,9 +149,7 @@ class FleetCoordinator:
                 "coordinator stopped after a persistence failure"
             ) from self._persistence_error
         try:
-            self._state_store.save(
-                self._coordinator_id, self._snapshot_locked()
-            )
+            self._state_store.save(self._coordinator_id, self._snapshot_locked())
         except Exception as exc:
             self._persistence_error = exc
             raise FleetError(
