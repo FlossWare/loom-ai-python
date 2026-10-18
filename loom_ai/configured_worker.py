@@ -105,7 +105,6 @@ class ConfiguredModelWorker:
                 description=f"Configured capability {capability_ref}",
             )
             for capability_ref in sorted(self.configuration.tool_capabilities)
-            if capability_ref in self.configuration.tool_capabilities
         )
         tool_results: list[ModelToolResult] = []
         max_tool_calls = self.configuration.limits.max_attempts
