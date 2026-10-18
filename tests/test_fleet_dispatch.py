@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event, Thread
@@ -115,8 +114,9 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
         execution_id = response["execution_id"]
         assert response["status"] == "success"
         assert response["result"]["status"] == "success"
-        assert response["result"]["metadata"]["fleet_execution_id"] == execution_id
-        task_id = response["result"]["metadata"]["fleet_task_id"]
+        dispatched = response["result"]["output"][0]
+        assert dispatched["metadata"]["fleet_execution_id"] == execution_id
+        task_id = dispatched["metadata"]["fleet_task_id"]
 
         request = Request(f"{base_url}/executions/{execution_id}")
         with urlopen(request, timeout=2) as result_response:
