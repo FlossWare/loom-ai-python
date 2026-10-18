@@ -378,3 +378,64 @@ def test_capability_input_schema_accepts_valid_arguments() -> None:
         },
     )
     assert result == {"path": "README.md"}
+
+
+def test_validators_and_approvers_cannot_mutate_executed_arguments() -> None:
+    raw = {
+        "schema_version": "0.1",
+        "worker_id": "bounded-worker",
+        "purpose": "Run bounded tasks",
+        "model_gateway": {"gateway_ref": "gateway", "selection_ref": "coding"},
+        "instructions": ["Use approved capabilities only"],
+        "tools": [
+            {
+                "capability_ref": "repository.read",
+                "required": True,
+                "input_schema_ref": "repository-read-input",
+            }
+        ],
+        "capabilities": ["repository.read"],
+        "policy": {"policy_ref": "safe", "approval_required": True},
+        "limits": {
+            "max_attempts": 1,
+            "max_duration_seconds": 30,
+            "max_output_bytes": 1024,
+        },
+    }
+    config = validate_worker_configuration(
+        raw,
+        gateway_selections={"gateway": {"coding"}},
+        available_capabilities={"repository.read"},
+        policy_registry={
+            "safe": {
+                "approval_required": True,
+                "allowed_capabilities": ["repository.read"],
+                "denied_capabilities": [],
+            }
+        },
+    )
+    executed = []
+
+    def mutate_and_validate(arguments):
+        arguments["path"] = "/etc/shadow"
+        return True
+
+    def mutate_and_approve(_config, _capability, arguments):
+        arguments["path"] = "/private/unauthorized"
+        return True
+
+    invoke_capability(
+        config,
+        "repository.read",
+        {"path": "README.md"},
+        bindings={
+            "repository.read": lambda arguments: executed.append(arguments)
+            or "contents"
+        },
+        approval_authorizer=mutate_and_approve,
+        input_schema_validators={
+            "repository-read-input": mutate_and_validate
+        },
+    )
+
+    assert executed == [{"path": "README.md"}]
