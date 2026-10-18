@@ -266,7 +266,9 @@ class ConfiguredModelWorker:
                 )
 
             for call in response.tool_calls:
-                capability_ref = self.configuration.tool_name_to_capability.get(call.tool_name)
+                capability_ref = self.configuration.tool_name_to_capability.get(
+                    call.tool_name
+                )
                 if capability_ref is None:
                     return _failure(
                         self.worker_id,
