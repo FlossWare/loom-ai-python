@@ -261,5 +261,7 @@ def test_duplicate_configured_tool_names_are_rejected() -> None:
     value["tools"][0]["name"] = "read"
     value["tools"][1]["name"] = "read"
 
-    with pytest.raises(WorkerConfigurationError, match="name duplicates a configured tool"):
+    with pytest.raises(
+        WorkerConfigurationError, match="name duplicates a configured tool"
+    ):
         validate(value)
