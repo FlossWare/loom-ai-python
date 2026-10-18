@@ -8,8 +8,8 @@ from urllib.request import Request, urlopen
 import pytest
 
 from loom_ai.fleet import FleetCoordinator
-from loom_ai.intent import Intent
 from loom_ai.fleet_http import FleetHTTPServer, FleetWorkerAgent
+from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 
@@ -144,7 +144,7 @@ def test_agent_rejects_non_http_base_url() -> None:
 
 
 def test_http_server_rejects_non_json_result_before_commit() -> None:
-    _coordinator, server, thread, base_url = start_server()
+    coordinator, server, thread, base_url = start_server()
     worker = RecordingWorker("worker-a", "unused")
     agent = FleetWorkerAgent(
         base_url,
