@@ -304,21 +304,40 @@ class FleetCoordinator:
                             "status": "coordinator_restart_lease_invalidated",
                         },
                     )
-                    if attempt < maximum and not (
-                        deadline is not None and now >= deadline
-                    ):
+                    if deadline is not None and now >= deadline:
+                        status = FleetTaskStatus.FAILED
+                        result_value = WorkerResult(
+                            worker_id="fleet-coordinator",
+                            status=WorkerStatus.FAILED,
+                            error="task deadline expired during coordinator restart",
+                            evidence=(
+                                {"type": "task-deadline-expired"},
+                                {"type": "coordinator-restart-lease-invalidated"},
+                            ),
+                            metadata={"termination_cause": "deadline_exceeded"},
+                        )
+                    elif attempt < maximum:
                         status, result_value = FleetTaskStatus.QUEUED, None
                     else:
                         status = FleetTaskStatus.FAILED
                         result_value = WorkerResult(
                             worker_id="fleet-coordinator",
                             status=WorkerStatus.FAILED,
-                            error="active lease invalidated during coordinator restart",
+                            error="active lease invalidated after attempts exhausted",
                             evidence=(
                                 {"type": "coordinator-restart-lease-invalidated"},
                             ),
-                            metadata={"termination_cause": "coordinator_restart"},
+                            metadata={"termination_cause": "attempts_exhausted"},
                         )
+                elif status is FleetTaskStatus.QUEUED and deadline is not None and now >= deadline:
+                    status = FleetTaskStatus.FAILED
+                    result_value = WorkerResult(
+                        worker_id="fleet-coordinator",
+                        status=WorkerStatus.FAILED,
+                        error="task deadline expired while coordinator was stopped",
+                        evidence=({"type": "task-deadline-expired"},),
+                        metadata={"termination_cause": "deadline_exceeded"},
+                    )
                 tasks[task_id] = FleetTask(
                     task_id=task_id,
                     execution_id=raw["execution_id"],
