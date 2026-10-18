@@ -91,8 +91,11 @@ class FileFleetStateStore:
         data = self._encode(coordinator_id, snapshot)
         try:
             with tempfile.NamedTemporaryFile(
-                mode="wb", dir=self.root, prefix=f".{path.name}.",
-                suffix=".tmp", delete=False,
+                mode="wb",
+                dir=self.root,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
             ) as temporary:
                 temporary_path = Path(temporary.name)
                 temporary.write(data)
