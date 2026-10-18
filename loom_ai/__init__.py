@@ -33,6 +33,7 @@ from loom_ai.fleet import (
     WorkerNotRegisteredError,
     WorkerRegistration,
 )
+from loom_ai.fleet_http import FleetHTTPError, FleetHTTPServer, FleetWorkerAgent
 from loom_ai.intent import Intent, IntentParseError
 from loom_ai.model import (
     ModelProvider,
@@ -94,6 +95,9 @@ __all__ = [
     "ModelToolDefinition",
     "ModelToolResult",
     "FleetCoordinator",
+    "FleetHTTPError",
+    "FleetHTTPServer",
+    "FleetWorkerAgent",
     "FleetConflictError",
     "FleetError",
     "FleetTask",
