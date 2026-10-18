@@ -226,7 +226,6 @@ def test_non_finite_metadata_numbers_are_rejected() -> None:
         validate(value)
 
 
-
 def test_tool_input_schema_references_are_preserved_and_immutable() -> None:
     value = config()
     value["tools"][0]["input_schema_ref"] = "repository-read-input"
@@ -240,9 +239,7 @@ def test_tool_input_schema_references_are_preserved_and_immutable() -> None:
 
 def test_duplicate_tool_capability_is_rejected() -> None:
     value = config()
-    value["tools"].append(
-        {"capability_ref": "repository.read", "required": False}
-    )
+    value["tools"].append({"capability_ref": "repository.read", "required": False})
 
     with pytest.raises(WorkerConfigurationError, match="duplicates a configured tool"):
         validate(value)
