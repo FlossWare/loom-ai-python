@@ -788,9 +788,9 @@ class FleetCoordinator:
         termination_cause: str = "cancelled",
     ) -> FleetTask:
         """Terminate queued or running work and fence any later Worker result."""
-        if not reason.strip():
+        if not isinstance(reason, str) or not reason.strip():
             raise ValueError("reason must not be empty")
-        if termination_cause not in {
+        if not isinstance(termination_cause, str) or termination_cause not in {
             "cancelled",
             "deadline_exceeded",
             "worker_timeout",
