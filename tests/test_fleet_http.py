@@ -63,8 +63,8 @@ def get_json(base_url: str, path: str, token: str = "test-token"):
 
 def test_two_independent_http_agents_claim_and_execute_matching_tasks() -> None:
     _coordinator, server, thread, base_url = start_server()
-    worker_a = TestWorker("worker-a", "alpha")
-    worker_b = TestWorker("worker-b", "beta")
+    worker_a = RecordingWorker("worker-a", "alpha")
+    worker_b = RecordingWorker("worker-b", "beta")
     agent_a = FleetWorkerAgent(
         base_url,
         "test-token",
@@ -143,7 +143,7 @@ def test_agent_rejects_non_http_base_url() -> None:
         FleetWorkerAgent(
             "file:///tmp/fleet",
             "test-token",
-            TestWorker("worker-a", "unused"),
+            RecordingWorker("worker-a", "unused"),
             implementation_id="impl-a",
             capabilities=["cap.a"],
         )
@@ -151,7 +151,7 @@ def test_agent_rejects_non_http_base_url() -> None:
 
 def test_http_server_rejects_non_json_result_before_commit() -> None:
     _coordinator, server, thread, base_url = start_server()
-    worker = TestWorker("worker-a", "unused")
+    worker = RecordingWorker("worker-a", "unused")
     agent = FleetWorkerAgent(
         base_url,
         "test-token",
