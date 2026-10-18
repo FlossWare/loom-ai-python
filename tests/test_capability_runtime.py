@@ -147,9 +147,10 @@ def test_approved_capability_invocation_calls_binding() -> None:
     assert approved == ["repository.read"]
 
 
-
 def test_declared_capability_without_tool_binding_is_not_executable() -> None:
-    with pytest.raises(CapabilityInvocationError, match="not declared as an executable"):
+    with pytest.raises(
+        CapabilityInvocationError, match="not declared as an executable"
+    ):
         invoke_capability(
             configuration(approval_required=False, declare_tool=False),
             "repository.read",
