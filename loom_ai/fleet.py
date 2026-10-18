@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from loom_ai.intent import Intent
+from loom_ai.fleet_state import FleetStateError, FleetStateStore
 from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
 
 
@@ -116,14 +117,140 @@ class FleetCoordinator:
         *,
         heartbeat_timeout_seconds: int = 30,
         clock: Callable[[], datetime] | None = None,
+        state_store: FleetStateStore | None = None,
+        coordinator_id: str = "default",
     ) -> None:
         if heartbeat_timeout_seconds < 1:
             raise ValueError("heartbeat_timeout_seconds must be positive")
         self.heartbeat_timeout_seconds = heartbeat_timeout_seconds
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        if not coordinator_id.strip():
+            raise ValueError("coordinator_id must not be empty")
         self._workers: dict[str, WorkerRegistration] = {}
         self._tasks: dict[str, FleetTask] = {}
         self._lock = RLock()
+        self._state_store = state_store
+        self._coordinator_id = coordinator_id
+        self._persistence_error: Exception | None = None
+        if state_store is not None:
+            snapshot = state_store.load(coordinator_id)
+            if snapshot is None:
+                self._persist_locked()
+            else:
+                self._restore_snapshot(snapshot)
+                self._persist_locked()
+
+    def _persist_locked(self) -> None:
+        """Persist state or fail-stop after an uncertain durability outcome."""
+        if self._state_store is None:
+            return
+        if self._persistence_error is not None:
+            raise FleetError("coordinator stopped after a persistence failure") from self._persistence_error
+        try:
+            self._state_store.save(self._coordinator_id, self._snapshot_locked())
+        except Exception as exc:
+            self._persistence_error = exc
+            raise FleetError("fleet state persistence failed; coordinator is fail-stopped") from exc
+
+    def _snapshot_locked(self) -> dict[str, Any]:
+        def stamp(value: datetime | None) -> str | None:
+            return value.isoformat() if value is not None else None
+
+        workers = [{
+            "worker_id": w.worker_id, "implementation_id": w.implementation_id,
+            "capabilities": list(w.capabilities), "lifecycle": w.lifecycle.value,
+            "last_heartbeat_at": stamp(w.last_heartbeat_at), "lease_seconds": w.lease_seconds,
+        } for w in self._workers.values()]
+        tasks = []
+        for t in self._tasks.values():
+            i, l, r = t.intent, t.lease, t.result
+            tasks.append({
+                "task_id": t.task_id, "execution_id": t.execution_id,
+                "idempotency_key": t.idempotency_key,
+                "intent": {"goal": i.goal, "requirements": list(i.requirements),
+                    "constraints": list(i.constraints), "acceptance": list(i.acceptance),
+                    "title": i.title, "intent_id": i.intent_id, "provenance": dict(i.provenance)},
+                "required_capabilities": list(t.required_capabilities), "max_attempts": t.max_attempts,
+                "deadline": stamp(t.deadline), "submitted_at": stamp(t.submitted_at),
+                "status": t.status.value, "attempt": t.attempt, "lease_generation": t.lease_generation,
+                "lease": None if l is None else {"task_id": l.task_id, "lease_id": l.lease_id,
+                    "worker_id": l.worker_id, "generation": l.generation, "attempt": l.attempt,
+                    "expires_at": stamp(l.expires_at)},
+                "result": None if r is None else {"worker_id": r.worker_id, "status": r.status.value,
+                    "output": r.output, "evidence": list(r.evidence), "error": r.error,
+                    "metadata": dict(r.metadata)},
+                "attempt_history": list(t.attempt_history),
+            })
+        return {"workers": workers, "tasks": tasks}
+
+    def _restore_snapshot(self, snapshot: Mapping[str, Any]) -> None:
+        """Restore validated state while invalidating all pre-restart leases."""
+        try:
+            if not isinstance(snapshot.get("workers"), list) or not isinstance(snapshot.get("tasks"), list):
+                raise ValueError("snapshot requires worker and task lists")
+            now = self._now()
+
+            def parse_time(value: str | None) -> datetime | None:
+                if value is None:
+                    return None
+                parsed = datetime.fromisoformat(value)
+                if parsed.tzinfo is None or parsed.utcoffset() is None:
+                    raise ValueError("timestamp has no timezone")
+                return parsed.astimezone(timezone.utc)
+
+            workers: dict[str, WorkerRegistration] = {}
+            for raw in snapshot["workers"]:
+                worker_id = raw["worker_id"]
+                if worker_id in workers:
+                    raise ValueError("duplicate worker identity")
+                workers[worker_id] = WorkerRegistration(
+                    worker_id=worker_id, implementation_id=raw["implementation_id"],
+                    capabilities=tuple(raw["capabilities"]), lifecycle=WorkerLifecycle.UNHEALTHY,
+                    last_heartbeat_at=now, lease_seconds=int(raw["lease_seconds"]),
+                )
+            tasks: dict[str, FleetTask] = {}
+            for raw in snapshot["tasks"]:
+                task_id = raw["task_id"]
+                if task_id in tasks:
+                    raise ValueError("duplicate task identity")
+                ri = raw["intent"]
+                intent = Intent(goal=ri["goal"], requirements=tuple(ri["requirements"]),
+                    constraints=tuple(ri["constraints"]), acceptance=tuple(ri["acceptance"]),
+                    title=ri["title"], intent_id=ri["intent_id"], provenance=dict(ri["provenance"]))
+                rr = raw.get("result")
+                result = None if rr is None else WorkerResult(
+                    worker_id=rr["worker_id"], status=WorkerStatus(rr["status"]),
+                    output=rr.get("output"), evidence=tuple(rr.get("evidence", ())),
+                    error=rr.get("error", ""), metadata=dict(rr.get("metadata", {})))
+                status = FleetTaskStatus(raw["status"])
+                history = tuple(raw.get("attempt_history", ()))
+                attempt, maximum = int(raw["attempt"]), int(raw["max_attempts"])
+                deadline = parse_time(raw.get("deadline"))
+                if status is FleetTaskStatus.RUNNING:
+                    old_lease = raw.get("lease")
+                    if old_lease is None:
+                        raise ValueError("running task lacks lease")
+                    history += ({"attempt": attempt, "worker_id": old_lease["worker_id"],
+                        "generation": int(old_lease["generation"]),
+                        "status": "coordinator_restart_lease_invalidated"},)
+                    if attempt < maximum and not (deadline is not None and now >= deadline):
+                        status, result = FleetTaskStatus.QUEUED, None
+                    else:
+                        status = FleetTaskStatus.FAILED
+                        result = WorkerResult(worker_id="fleet-coordinator", status=WorkerStatus.FAILED,
+                            error="active lease invalidated during coordinator restart",
+                            evidence=({"type": "coordinator-restart-lease-invalidated"},),
+                            metadata={"termination_cause": "coordinator_restart"})
+                tasks[task_id] = FleetTask(
+                    task_id=task_id, execution_id=raw["execution_id"],
+                    idempotency_key=raw["idempotency_key"], intent=intent,
+                    required_capabilities=tuple(raw["required_capabilities"]), max_attempts=maximum,
+                    deadline=deadline, submitted_at=parse_time(raw["submitted_at"]),
+                    status=status, attempt=attempt, lease_generation=int(raw["lease_generation"]),
+                    lease=None, result=result, attempt_history=history)
+            self._workers, self._tasks = workers, tasks
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise FleetStateError("persisted fleet snapshot is invalid") from exc
 
     def register_worker(
         self,
@@ -159,6 +286,7 @@ class FleetCoordinator:
                 lease_seconds=lease_seconds,
             )
             self._workers[worker_id] = registration
+            self._persist_locked()
             return registration
 
     def heartbeat(self, worker_id: str) -> WorkerRegistration:
@@ -172,6 +300,7 @@ class FleetCoordinator:
             if worker.lifecycle is WorkerLifecycle.DRAINING:
                 updated = replace(worker, last_heartbeat_at=self._now())
                 self._workers[worker_id] = updated
+                self._persist_locked()
                 return updated
             updated = replace(
                 worker,
@@ -179,6 +308,7 @@ class FleetCoordinator:
                 lifecycle=WorkerLifecycle.READY,
             )
             self._workers[worker_id] = updated
+            self._persist_locked()
             return updated
 
     def drain_worker(self, worker_id: str) -> WorkerRegistration:
@@ -269,6 +399,7 @@ class FleetCoordinator:
                 submitted_at=self._now(),
             )
             self._tasks[actual_task_id] = task
+            self._persist_locked()
             return task
 
     def claim_task(self, worker_id: str) -> FleetTask | None:
@@ -309,6 +440,7 @@ class FleetCoordinator:
                     lease=lease,
                 )
                 self._tasks[task.task_id] = leased
+                self._persist_locked()
                 return leased
             return None
 
@@ -347,6 +479,7 @@ class FleetCoordinator:
                 expires_at=now + timedelta(seconds=worker.lease_seconds),
             )
             self._tasks[task_id] = replace(task, lease=renewed)
+            self._persist_locked()
             return renewed
 
     def submit_result(
@@ -430,6 +563,7 @@ class FleetCoordinator:
                     attempt_history=history,
                 )
             self._tasks[task_id] = updated
+            self._persist_locked()
             return updated
 
     def execute_claimed_task(self, task_id: str, worker: Worker) -> FleetTask:
@@ -533,6 +667,8 @@ class FleetCoordinator:
                     self._workers[worker_id] = replace(
                         worker, lifecycle=WorkerLifecycle.UNHEALTHY
                     )
+        if expired:
+            self._persist_locked()
         return tuple(expired)
 
     def observe_task(self, task_id: str) -> FleetTask:
@@ -560,6 +696,7 @@ class FleetCoordinator:
             self._workers[worker_id] = replace(
                 worker, lifecycle=WorkerLifecycle.UNHEALTHY
             )
+            self._persist_locked()
             return None
         return worker
 
@@ -574,6 +711,7 @@ class FleetCoordinator:
                 worker, lifecycle=lifecycle, last_heartbeat_at=self._now()
             )
             self._workers[worker_id] = updated
+            self._persist_locked()
             return updated
 
     def _get_task(self, task_id: str) -> FleetTask:
@@ -596,8 +734,9 @@ class FleetCoordinator:
             metadata={"termination_cause": "deadline_exceeded"},
         )
         self._tasks[task.task_id] = replace(
-            task, status=FleetTaskStatus.FAILED, result=result
+            task, status=FleetTaskStatus.FAILED, lease=None, result=result
         )
+        self._persist_locked()
 
     def _now(self) -> datetime:
         now = self._clock()
