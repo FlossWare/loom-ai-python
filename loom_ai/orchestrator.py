@@ -137,7 +137,7 @@ class Orchestrator:
         actual_id = execution_id or str(uuid4())
         token = CancellationToken()
         with self._lock:
-            metadata: dict = {"phase": "initial"}
+            metadata: dict = {"phase": "initial", "execution_id": actual_id}
             if absolute_deadline is not None:
                 metadata["deadline"] = absolute_deadline.isoformat()
             self._create_execution(
@@ -152,7 +152,9 @@ class Orchestrator:
             self._active[actual_id] = token
 
         try:
-            result = self._execute_with_controls(intent, absolute_deadline, token)
+            result = self._execute_with_controls(
+                intent, absolute_deadline, token, execution_id=actual_id
+            )
         except Exception as exc:
             with self._lock:
                 control_cause = _control_cause(token, absolute_deadline)
@@ -577,6 +579,8 @@ class Orchestrator:
         intent: Intent,
         deadline: datetime | None,
         token: CancellationToken,
+        *,
+        execution_id: str | None = None,
     ) -> WorkerResult:
         if deadline is not None and _is_expired(deadline):
             return _deadline_result()
@@ -586,6 +590,11 @@ class Orchestrator:
                 state={"phase": "initial"},
                 deadline=deadline,
                 cancellation_token=token,
+                metadata=(
+                    {"phase": "initial", "execution_id": execution_id}
+                    if execution_id is not None
+                    else {"phase": "initial"}
+                ),
             )
         )
 

@@ -82,11 +82,51 @@ identity. Omitting `--state-dir` deliberately disables durable observation and
 continuation; the server will still respond to `/health` and accept ephemeral
 smoke-test submissions.
 
-**Important limitation:** the CLI's built-in Worker is a no-op transport smoke
-Worker. This command proves HTTP/application-boundary wiring and persistence, not
-repository editing, distributed Worker execution, or production qualification.
-A real deployment must supply the configured Worker/Arbiter composition and
-complete the external-client dogfood gate before claiming end-to-end execution.
+**Important limitation:** without fleet configuration, the CLI's built-in Worker is
+a no-op transport smoke Worker. To route ordinary REST Intent submissions through
+independently running fleet Workers, configure both durable state stores and the
+fleet bearer token:
+
+```sh
+export LOOM_FLEET_TOKEN='replace-with-a-long-random-token'
+loom-server \
+  --host 127.0.0.1 --port 8000 \
+  --state-dir "$HOME/.local/state/flossware-loom/executions" \
+  --fleet-state-dir "$HOME/.local/state/flossware-loom/fleet" \
+  --fleet-host 127.0.0.1 --fleet-port 8001
+```
+
+The server submits each `POST /intents` execution through a FleetDispatchWorker,
+which creates a correlated task in the coordinator and waits for a remote Worker
+result. Workers register with the same token and advertise the `loom.execute`
+capability. A minimal polling loop for a configured Worker looks like this:
+
+```python
+import os
+import time
+
+from loom_ai.fleet_http import FleetWorkerAgent
+from my_worker import worker
+
+agent = FleetWorkerAgent(
+    "http://127.0.0.1:8001",
+    os.environ["LOOM_FLEET_TOKEN"],
+    worker,
+    implementation_id="my-worker-0.1",
+    capabilities=["loom.execute"],
+)
+while True:
+    if not agent.run_once():
+        time.sleep(0.1)
+```
+
+The worker-facing HTTP service accepts registration, heartbeat, claim, lease-renewal,
+result, and observation operations. It deliberately does not expose task submission:
+ordinary task creation stays inside the Orchestrator boundary. The filesystem
+coordinator store supports one active coordinator only; it is not a multi-leader
+protocol. For remote hosts, use a trusted network or terminate TLS at a correctly
+configured reverse proxy because bearer tokens do not encrypt HTTP traffic.
+
 
 ## Generic MCP interface
 

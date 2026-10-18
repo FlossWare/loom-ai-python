@@ -9,6 +9,7 @@ import pytest
 
 from loom_ai.fleet import FleetCoordinator
 from loom_ai.fleet_http import FleetHTTPServer, FleetWorkerAgent
+from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 
@@ -62,7 +63,7 @@ def get_json(base_url: str, path: str, token: str = "test-token"):
 
 
 def test_two_independent_http_agents_claim_and_execute_matching_tasks() -> None:
-    _coordinator, server, thread, base_url = start_server()
+    coordinator, server, thread, base_url = start_server()
     worker_a = RecordingWorker("worker-a", "alpha")
     worker_b = RecordingWorker("worker-b", "beta")
     agent_a = FleetWorkerAgent(
@@ -83,20 +84,13 @@ def test_two_independent_http_agents_claim_and_execute_matching_tasks() -> None:
         agent_a.register()
         agent_b.register()
         for task_id, cap in (("task-a", "cap.a"), ("task-b", "cap.b")):
-            post_json(
-                base_url,
-                "/tasks",
-                {
-                    "task_id": task_id,
-                    "execution_id": "exec-" + task_id,
-                    "idempotency_key": task_id,
-                    "intent": {
-                        "goal": "execute " + task_id,
-                        "intent_id": "intent-" + task_id,
-                    },
-                    "required_capabilities": [cap],
-                    "max_attempts": 2,
-                },
+            coordinator.submit_task(
+                Intent(goal="execute " + task_id, intent_id="intent-" + task_id),
+                execution_id="exec-" + task_id,
+                task_id=task_id,
+                idempotency_key=task_id,
+                required_capabilities=[cap],
+                max_attempts=2,
             )
 
         assert agent_a.run_once() is True
@@ -150,7 +144,7 @@ def test_agent_rejects_non_http_base_url() -> None:
 
 
 def test_http_server_rejects_non_json_result_before_commit() -> None:
-    _coordinator, server, thread, base_url = start_server()
+    coordinator, server, thread, base_url = start_server()
     worker = RecordingWorker("worker-a", "unused")
     agent = FleetWorkerAgent(
         base_url,
@@ -161,15 +155,11 @@ def test_http_server_rejects_non_json_result_before_commit() -> None:
     )
     try:
         agent.register()
-        post_json(
-            base_url,
-            "/tasks",
-            {
-                "task_id": "task-nan",
-                "execution_id": "exec-nan",
-                "intent": {"goal": "bad result", "intent_id": "intent-nan"},
-                "required_capabilities": ["cap.a"],
-            },
+        coordinator.submit_task(
+            Intent(goal="bad result", intent_id="intent-nan"),
+            execution_id="exec-nan",
+            task_id="task-nan",
+            required_capabilities=["cap.a"],
         )
         leased = post_json(base_url, "/workers/worker-a/claim", {})
         task = leased["task"]
@@ -191,6 +181,28 @@ def test_http_server_rejects_non_json_result_before_commit() -> None:
             )
         assert error.value.code == 400
         assert get_json(base_url, "/tasks/task-nan")["status"] == "running"
+    finally:
+        server.close()
+        thread.join(timeout=2)
+
+
+def test_worker_http_cannot_submit_tasks_around_orchestrator() -> None:
+    _coordinator, server, thread, base_url = start_server()
+    try:
+        with pytest.raises(HTTPError) as error:
+            post_json(
+                base_url,
+                "/tasks",
+                {
+                    "execution_id": "exec-bypass",
+                    "intent": {
+                        "goal": "must use Orchestrator",
+                        "intent_id": "intent-bypass",
+                    },
+                    "required_capabilities": ["cap.a"],
+                },
+            )
+        assert error.value.code == 404
     finally:
         server.close()
         thread.join(timeout=2)

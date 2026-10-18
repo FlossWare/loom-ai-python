@@ -32,7 +32,7 @@ class FleetHTTPError(RuntimeError):
 
 
 class FleetHTTPServer:
-    """HTTP binding for FleetCoordinator; protect remote deployments with TLS."""
+    """Authenticated worker transport; task submission remains inside Orchestrator."""
 
     def __init__(
         self,
@@ -161,29 +161,6 @@ class FleetHTTPServer:
                                 "lifecycle": worker.lifecycle.value,
                             },
                         )
-                        return
-                    if path == "/tasks":
-                        intent_payload = payload.get("intent")
-                        if not isinstance(intent_payload, dict):
-                            raise ValueError("intent must be an object")
-                        deadline_value = payload.get("deadline")
-                        deadline = (
-                            datetime.fromisoformat(deadline_value)
-                            if isinstance(deadline_value, str)
-                            else None
-                        )
-                        task = owner.coordinator.submit_task(
-                            _intent_from_payload(intent_payload),
-                            execution_id=_required_string(payload, "execution_id"),
-                            task_id=payload.get("task_id"),
-                            idempotency_key=payload.get("idempotency_key"),
-                            required_capabilities=_string_list(
-                                payload, "required_capabilities"
-                            ),
-                            max_attempts=int(payload.get("max_attempts", 3)),
-                            deadline=deadline,
-                        )
-                        self._send(HTTPStatus.CREATED, _task_payload(task))
                         return
                     if path.startswith("/workers/") and path.endswith("/claim"):
                         worker_id = unquote(
