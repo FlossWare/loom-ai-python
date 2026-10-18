@@ -21,6 +21,18 @@ from loom_ai.execution_state import (
     FileExecutionStateStore,
 )
 from loom_ai.fake_model_provider import FakeModelProvider
+from loom_ai.fleet import (
+    FleetConflictError,
+    FleetCoordinator,
+    FleetError,
+    FleetTask,
+    FleetTaskStatus,
+    StaleLeaseError,
+    TaskLease,
+    WorkerLifecycle,
+    WorkerNotRegisteredError,
+    WorkerRegistration,
+)
 from loom_ai.intent import Intent, IntentParseError
 from loom_ai.model import (
     ModelProvider,
@@ -81,6 +93,16 @@ __all__ = [
     "ModelToolCall",
     "ModelToolDefinition",
     "ModelToolResult",
+    "FleetCoordinator",
+    "FleetConflictError",
+    "FleetError",
+    "FleetTask",
+    "FleetTaskStatus",
+    "StaleLeaseError",
+    "TaskLease",
+    "WorkerLifecycle",
+    "WorkerNotRegisteredError",
+    "WorkerRegistration",
     "ModelWorker",
     "Orchestrator",
     "OrchestratorSubmission",
