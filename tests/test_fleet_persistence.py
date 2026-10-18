@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from loom_ai.fleet import FleetCoordinator, FleetTaskStatus, StaleLeaseError, WorkerLifecycle
+from loom_ai.fleet import (
+    FleetCoordinator,
+    FleetTaskStatus,
+    StaleLeaseError,
+    WorkerLifecycle,
+)
 from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerResult, WorkerStatus
