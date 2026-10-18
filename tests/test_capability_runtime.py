@@ -159,7 +159,6 @@ def test_declared_capability_without_tool_binding_is_not_executable() -> None:
         )
 
 
-
 def test_capability_invocation_deep_copies_json_arguments() -> None:
     config = configuration(approval_required=False)
     source = {"nested": {"items": [1, 2]}}
@@ -176,7 +175,6 @@ def test_capability_invocation_deep_copies_json_arguments() -> None:
     assert received[0] is not source
     assert received[0]["nested"] is not source["nested"]
 
-
 def test_capability_invocation_rejects_non_json_arguments() -> None:
     with pytest.raises(CapabilityInvocationError, match="JSON-compatible"):
         invoke_capability(
@@ -185,7 +183,6 @@ def test_capability_invocation_rejects_non_json_arguments() -> None:
             {"not_json": object()},
             bindings={"repository.read": lambda args: "must not run"},
         )
-
 
 def test_capability_invocation_rejects_non_json_result() -> None:
     with pytest.raises(CapabilityInvocationError, match="JSON-compatible"):
@@ -196,7 +193,6 @@ def test_capability_invocation_rejects_non_json_result() -> None:
             bindings={"repository.read": lambda args: object()},
         )
 
-
 def test_capability_invocation_rejects_oversized_result() -> None:
     config = configuration(approval_required=False)
     with pytest.raises(CapabilityInvocationError, match="output byte limit"):
@@ -206,7 +202,6 @@ def test_capability_invocation_rejects_oversized_result() -> None:
             {},
             bindings={"repository.read": lambda args: {"payload": "x" * 2048}},
         )
-
 
 def test_capability_invocation_rejects_non_finite_result_numbers() -> None:
     with pytest.raises(CapabilityInvocationError, match="JSON-compatible"):
