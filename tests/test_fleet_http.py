@@ -8,12 +8,11 @@ from urllib.request import Request, urlopen
 import pytest
 
 from loom_ai.fleet import FleetCoordinator
-from loom_ai.fleet_http import FleetHTTPError, FleetHTTPServer, FleetWorkerAgent
-from loom_ai.intent import Intent
+from loom_ai.fleet_http import FleetHTTPServer, FleetWorkerAgent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 
-class TestWorker:
+class RecordingWorker:
     def __init__(self, worker_id: str, output: str) -> None:
         self._worker_id = worker_id
         self.output = output
