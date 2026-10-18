@@ -448,7 +448,7 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
     assert followup.tool_results == (
         ModelToolResult(
             call_id="call-1",
-            capability_ref="repository.read",
+            tool_name="repository.read",
             result={"contents": "hello"},
         ),
     )
@@ -483,7 +483,7 @@ def test_configured_worker_rejects_model_requested_unconfigured_tool() -> None:
     result = worker.execute(WorkerContext(intent=Intent(goal="inspect repository")))
 
     assert result.status is WorkerStatus.FAILED
-    assert result.metadata["termination_cause"] == "unknown_capability"
+    assert result.metadata["termination_cause"] == "unknown_tool_name"
     assert calls == []
 
 
