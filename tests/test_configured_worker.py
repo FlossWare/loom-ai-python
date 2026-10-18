@@ -568,7 +568,9 @@ def test_configured_worker_does_not_execute_tool_after_provider_cancels() -> Non
     )
 
     result = worker.execute(
-        WorkerContext(intent=Intent(goal="inspect repository"), cancellation_token=token)
+        WorkerContext(
+            intent=Intent(goal="inspect repository"), cancellation_token=token
+        )
     )
 
     assert result.status is WorkerStatus.CANCELLED
