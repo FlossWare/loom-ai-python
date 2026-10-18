@@ -22,8 +22,8 @@ from loom_ai.execution_state import (
 )
 from loom_ai.fake_model_provider import FakeModelProvider
 from loom_ai.fleet import (
-    FleetCoordinator,
     FleetConflictError,
+    FleetCoordinator,
     FleetError,
     FleetTask,
     FleetTaskStatus,
