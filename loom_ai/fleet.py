@@ -667,7 +667,8 @@ class FleetCoordinator:
                     self._workers[worker_id] = replace(
                         worker, lifecycle=WorkerLifecycle.UNHEALTHY
                     )
-        if expired:
+            # Persist lease expirations and heartbeat-based lifecycle changes
+            # together, even when no task lease expired.
             self._persist_locked()
         return tuple(expired)
 
