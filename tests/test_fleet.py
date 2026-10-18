@@ -273,3 +273,54 @@ def test_two_workers_claim_distinct_tasks_concurrently() -> None:
         "task-b",
     }
     assert len({claim.lease.lease_id for claim in claims if claim and claim.lease}) == 2
+
+
+def test_result_worker_identity_must_match_lease_holder() -> None:
+    coordinator, _ = setup_coordinator()
+    coordinator.register_worker("worker-a", "impl-a", ["search.read"])
+    coordinator.submit_task(
+        Intent(goal="search"),
+        execution_id="exec-1",
+        task_id="task-1",
+        required_capabilities=["search.read"],
+    )
+    leased = coordinator.claim_task("worker-a")
+    assert leased is not None and leased.lease is not None
+
+    with pytest.raises(FleetConflictError, match="identity does not match"):
+        coordinator.submit_result(
+            "task-1",
+            worker_id="worker-a",
+            lease_id=leased.lease.lease_id,
+            generation=leased.lease.generation,
+            result=WorkerResult(
+                worker_id="worker-b", status=WorkerStatus.SUCCESS, output="spoofed"
+            ),
+        )
+
+
+def test_task_deadline_rejects_late_result() -> None:
+    coordinator, clock = setup_coordinator()
+    coordinator.register_worker("worker-a", "impl-a", ["search.read"])
+    coordinator.submit_task(
+        Intent(goal="search"),
+        execution_id="exec-1",
+        task_id="task-1",
+        required_capabilities=["search.read"],
+        deadline=clock.current + timedelta(seconds=1),
+    )
+    leased = coordinator.claim_task("worker-a")
+    assert leased is not None and leased.lease is not None
+    clock.advance(2)
+
+    with pytest.raises(StaleLeaseError, match="deadline"):
+        coordinator.submit_result(
+            "task-1",
+            worker_id="worker-a",
+            lease_id=leased.lease.lease_id,
+            generation=leased.lease.generation,
+            result=WorkerResult(
+                worker_id="worker-a", status=WorkerStatus.SUCCESS, output="too late"
+            ),
+        )
+    assert coordinator.observe_task("task-1").status is FleetTaskStatus.FAILED

@@ -293,6 +293,9 @@ class FleetCoordinator:
             task = self._get_task(task_id)
             lease = task.lease
             now = self._now()
+            if self._deadline_expired(task, now):
+                self._finish_deadline(task)
+                raise StaleLeaseError("task deadline has expired")
             if (
                 task.status is not FleetTaskStatus.RUNNING
                 or lease is None
@@ -306,6 +309,7 @@ class FleetCoordinator:
             worker = self._available_worker(worker_id)
             if worker is None:
                 raise WorkerNotRegisteredError("worker is not available")
+            self._workers[worker_id] = replace(worker, last_heartbeat_at=now)
             renewed = replace(
                 lease,
                 expires_at=now + timedelta(seconds=worker.lease_seconds),
@@ -326,10 +330,17 @@ class FleetCoordinator:
         """Commit a result from the current lease, or return an existing terminal result."""
         with self._lock:
             task = self._get_task(task_id)
+            if result.worker_id != worker_id:
+                raise FleetConflictError(
+                    "result Worker identity does not match lease holder"
+                )
             if task.status in _TERMINAL_TASK_STATES:
                 return task
             lease = task.lease
             now = self._now()
+            if self._deadline_expired(task, now):
+                self._finish_deadline(task)
+                raise StaleLeaseError("task deadline has expired")
             if (
                 task.status is not FleetTaskStatus.RUNNING
                 or lease is None
