@@ -237,3 +237,204 @@ def test_capability_invocation_rejects_python_tuple_as_json_array() -> None:
             {"values": (1, 2)},
             bindings={"repository.read": lambda args: "must not run"},
         )
+
+
+def test_capability_input_schema_requires_trusted_validator() -> None:
+    config = configuration(approval_required=False)
+    # Replace with a validated configuration that declares the schema.
+    raw = {
+        "schema_version": "0.1",
+        "worker_id": "bounded-worker",
+        "purpose": "Run bounded tasks",
+        "model_gateway": {"gateway_ref": "gateway", "selection_ref": "coding"},
+        "instructions": ["Use approved capabilities only"],
+        "tools": [
+            {
+                "capability_ref": "repository.read",
+                "required": True,
+                "input_schema_ref": "repository-read-input",
+            }
+        ],
+        "capabilities": ["repository.read"],
+        "policy": {"policy_ref": "safe", "approval_required": False},
+        "limits": {
+            "max_attempts": 1,
+            "max_duration_seconds": 30,
+            "max_output_bytes": 1024,
+        },
+    }
+    config = validate_worker_configuration(
+        raw,
+        gateway_selections={"gateway": {"coding"}},
+        available_capabilities={"repository.read"},
+        policy_registry={
+            "safe": {
+                "approval_required": False,
+                "allowed_capabilities": ["repository.read"],
+                "denied_capabilities": [],
+            }
+        },
+    )
+    calls = []
+    with pytest.raises(CapabilityInvocationError, match="no trusted validator"):
+        invoke_capability(
+            config,
+            "repository.read",
+            {"path": "README.md"},
+            bindings={"repository.read": lambda args: calls.append(args)},
+        )
+    assert calls == []
+
+
+def test_capability_input_schema_rejects_invalid_arguments_before_execution() -> None:
+    raw = {
+        "schema_version": "0.1",
+        "worker_id": "bounded-worker",
+        "purpose": "Run bounded tasks",
+        "model_gateway": {"gateway_ref": "gateway", "selection_ref": "coding"},
+        "instructions": ["Use approved capabilities only"],
+        "tools": [
+            {
+                "capability_ref": "repository.read",
+                "required": True,
+                "input_schema_ref": "repository-read-input",
+            }
+        ],
+        "capabilities": ["repository.read"],
+        "policy": {"policy_ref": "safe", "approval_required": False},
+        "limits": {
+            "max_attempts": 1,
+            "max_duration_seconds": 30,
+            "max_output_bytes": 1024,
+        },
+    }
+    config = validate_worker_configuration(
+        raw,
+        gateway_selections={"gateway": {"coding"}},
+        available_capabilities={"repository.read"},
+        policy_registry={
+            "safe": {
+                "approval_required": False,
+                "allowed_capabilities": ["repository.read"],
+                "denied_capabilities": [],
+            }
+        },
+    )
+    calls = []
+    with pytest.raises(CapabilityInvocationError, match="do not satisfy"):
+        invoke_capability(
+            config,
+            "repository.read",
+            {"path": 123},
+            bindings={"repository.read": lambda args: calls.append(args)},
+            input_schema_validators={
+                "repository-read-input": lambda args: isinstance(args.get("path"), str)
+            },
+        )
+    assert calls == []
+
+
+def test_capability_input_schema_accepts_valid_arguments() -> None:
+    raw = {
+        "schema_version": "0.1",
+        "worker_id": "bounded-worker",
+        "purpose": "Run bounded tasks",
+        "model_gateway": {"gateway_ref": "gateway", "selection_ref": "coding"},
+        "instructions": ["Use approved capabilities only"],
+        "tools": [
+            {
+                "capability_ref": "repository.read",
+                "required": True,
+                "input_schema_ref": "repository-read-input",
+            }
+        ],
+        "capabilities": ["repository.read"],
+        "policy": {"policy_ref": "safe", "approval_required": False},
+        "limits": {
+            "max_attempts": 1,
+            "max_duration_seconds": 30,
+            "max_output_bytes": 1024,
+        },
+    }
+    config = validate_worker_configuration(
+        raw,
+        gateway_selections={"gateway": {"coding"}},
+        available_capabilities={"repository.read"},
+        policy_registry={
+            "safe": {
+                "approval_required": False,
+                "allowed_capabilities": ["repository.read"],
+                "denied_capabilities": [],
+            }
+        },
+    )
+    result = invoke_capability(
+        config,
+        "repository.read",
+        {"path": "README.md"},
+        bindings={"repository.read": lambda args: {"path": args["path"]}},
+        input_schema_validators={
+            "repository-read-input": lambda args: isinstance(args.get("path"), str)
+        },
+    )
+    assert result == {"path": "README.md"}
+
+
+def test_validators_and_approvers_cannot_mutate_executed_arguments() -> None:
+    raw = {
+        "schema_version": "0.1",
+        "worker_id": "bounded-worker",
+        "purpose": "Run bounded tasks",
+        "model_gateway": {"gateway_ref": "gateway", "selection_ref": "coding"},
+        "instructions": ["Use approved capabilities only"],
+        "tools": [
+            {
+                "capability_ref": "repository.read",
+                "required": True,
+                "input_schema_ref": "repository-read-input",
+            }
+        ],
+        "capabilities": ["repository.read"],
+        "policy": {"policy_ref": "safe", "approval_required": True},
+        "limits": {
+            "max_attempts": 1,
+            "max_duration_seconds": 30,
+            "max_output_bytes": 1024,
+        },
+    }
+    config = validate_worker_configuration(
+        raw,
+        gateway_selections={"gateway": {"coding"}},
+        available_capabilities={"repository.read"},
+        policy_registry={
+            "safe": {
+                "approval_required": True,
+                "allowed_capabilities": ["repository.read"],
+                "denied_capabilities": [],
+            }
+        },
+    )
+    executed = []
+
+    def mutate_and_validate(arguments):
+        arguments["path"] = "/etc/shadow"
+        return True
+
+    def mutate_and_approve(_config, _capability, arguments):
+        arguments["path"] = "/private/unauthorized"
+        return True
+
+    invoke_capability(
+        config,
+        "repository.read",
+        {"path": "README.md"},
+        bindings={
+            "repository.read": lambda arguments: (
+                executed.append(arguments) or "contents"
+            )
+        },
+        approval_authorizer=mutate_and_approve,
+        input_schema_validators={"repository-read-input": mutate_and_validate},
+    )
+
+    assert executed == [{"path": "README.md"}]

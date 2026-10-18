@@ -26,6 +26,8 @@ def invoke_capability(
         [ValidatedWorkerConfiguration, str, Mapping[str, Any]], bool
     ]
     | None = None,
+    input_schema_validators: Mapping[str, Callable[[Mapping[str, Any]], bool]]
+    | None = None,
 ) -> Any:
     """Invoke one capability only through a trusted runtime binding.
 
@@ -56,6 +58,23 @@ def invoke_capability(
         ) from None
     if not isinstance(safe_arguments, dict):
         raise CapabilityInvocationError("capability arguments must be a JSON object")
+    schema_ref = configuration.tool_input_schema_refs.get(capability_ref)
+    if schema_ref is not None:
+        validator = (input_schema_validators or {}).get(schema_ref)
+        if validator is None or not callable(validator):
+            raise CapabilityInvocationError(
+                "configured tool input schema has no trusted validator"
+            )
+        try:
+            valid_arguments = validator(_clone_json(safe_arguments))
+        except Exception as exc:
+            raise CapabilityInvocationError(
+                "capability input validation failed"
+            ) from exc
+        if valid_arguments is not True:
+            raise CapabilityInvocationError(
+                "capability arguments do not satisfy the configured input schema"
+            )
     if configuration.approval_required:
         if approval_authorizer is None:
             raise CapabilityInvocationError(
@@ -63,7 +82,7 @@ def invoke_capability(
             )
         try:
             approved = approval_authorizer(
-                configuration, capability_ref, safe_arguments
+                configuration, capability_ref, _clone_json(safe_arguments)
             )
         except Exception as exc:
             raise CapabilityInvocationError("capability approval check failed") from exc
@@ -75,7 +94,7 @@ def invoke_capability(
     # Do not expose arbitrary binding exceptions as capability output or
     # evidence. Preserve the cause for trusted diagnostics at the caller.
     try:
-        result = binding(safe_arguments)
+        result = binding(_clone_json(safe_arguments))
     except Exception as exc:
         raise CapabilityInvocationError("capability invocation failed") from exc
 
@@ -112,3 +131,8 @@ def _assert_json_value(value: Any, path: str = "$") -> None:
             _assert_json_value(item, f"{path}[{index}]")
         return
     raise ValueError(f"{path} is not a JSON value")
+
+
+def _clone_json(value: Any) -> Any:
+    """Return a detached JSON-compatible copy before crossing trust boundaries."""
+    return json.loads(json.dumps(value, allow_nan=False, separators=(",", ":")))
