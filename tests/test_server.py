@@ -248,9 +248,7 @@ def test_server_persists_and_continues_execution_state() -> None:
             thread.join(timeout=2)
 
 
-def test_server_cli_can_enable_durable_execution_state(
-    monkeypatch, tmp_path
-) -> None:
+def test_server_cli_can_enable_durable_execution_state(monkeypatch, tmp_path) -> None:
     from loom_ai import server as server_module
 
     captured = {}
@@ -259,7 +257,9 @@ def test_server_cli_can_enable_durable_execution_state(
         captured["durable"] = server.orchestrator.durable_enabled
         captured["root"] = server.execution_store.root
 
-    monkeypatch.setattr(server_module.LoomServer, "serve_forever", stop_after_configuration)
+    monkeypatch.setattr(
+        server_module.LoomServer, "serve_forever", stop_after_configuration
+    )
     monkeypatch.setattr(
         sys,
         "argv",
