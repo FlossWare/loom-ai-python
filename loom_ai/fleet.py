@@ -14,8 +14,8 @@ from threading import RLock
 from typing import Any, Callable, Mapping
 from uuid import uuid4
 
-from loom_ai.intent import Intent
 from loom_ai.fleet_state import FleetStateError, FleetStateStore
+from loom_ai.intent import Intent
 from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
 
 
@@ -163,22 +163,22 @@ class FleetCoordinator:
         } for w in self._workers.values()]
         tasks = []
         for t in self._tasks.values():
-            i, l, r = t.intent, t.lease, t.result
+            intent_value, lease_value, result_value = t.intent, t.lease, t.result
             tasks.append({
                 "task_id": t.task_id, "execution_id": t.execution_id,
                 "idempotency_key": t.idempotency_key,
-                "intent": {"goal": i.goal, "requirements": list(i.requirements),
-                    "constraints": list(i.constraints), "acceptance": list(i.acceptance),
-                    "title": i.title, "intent_id": i.intent_id, "provenance": dict(i.provenance)},
+                "intent": {"goal": intent_value.goal, "requirements": list(intent_value.requirements),
+                    "constraints": list(intent_value.constraints), "acceptance": list(intent_value.acceptance),
+                    "title": intent_value.title, "intent_id": intent_value.intent_id, "provenance": dict(intent_value.provenance)},
                 "required_capabilities": list(t.required_capabilities), "max_attempts": t.max_attempts,
                 "deadline": stamp(t.deadline), "submitted_at": stamp(t.submitted_at),
                 "status": t.status.value, "attempt": t.attempt, "lease_generation": t.lease_generation,
-                "lease": None if l is None else {"task_id": l.task_id, "lease_id": l.lease_id,
-                    "worker_id": l.worker_id, "generation": l.generation, "attempt": l.attempt,
-                    "expires_at": stamp(l.expires_at)},
-                "result": None if r is None else {"worker_id": r.worker_id, "status": r.status.value,
-                    "output": r.output, "evidence": list(r.evidence), "error": r.error,
-                    "metadata": dict(r.metadata)},
+                "lease": None if lease_value is None else {"task_id": lease_value.task_id, "lease_id": lease_value.lease_id,
+                    "worker_id": lease_value.worker_id, "generation": lease_value.generation, "attempt": lease_value.attempt,
+                    "expires_at": stamp(lease_value.expires_at)},
+                "result": None if result_value is None else {"worker_id": result_value.worker_id, "status": result_value.status.value,
+                    "output": result_value.output, "evidence": list(result_value.evidence), "error": result_value.error,
+                    "metadata": dict(result_value.metadata)},
                 "attempt_history": list(t.attempt_history),
             })
         return {"workers": workers, "tasks": tasks}
@@ -218,7 +218,7 @@ class FleetCoordinator:
                     constraints=tuple(ri["constraints"]), acceptance=tuple(ri["acceptance"]),
                     title=ri["title"], intent_id=ri["intent_id"], provenance=dict(ri["provenance"]))
                 rr = raw.get("result")
-                result = None if rr is None else WorkerResult(
+                result = None if rresult_value is None else WorkerResult(
                     worker_id=rr["worker_id"], status=WorkerStatus(rr["status"]),
                     output=rr.get("output"), evidence=tuple(rr.get("evidence", ())),
                     error=rr.get("error", ""), metadata=dict(rr.get("metadata", {})))
@@ -293,7 +293,7 @@ class FleetCoordinator:
         """Refresh liveness without reviving an expired task lease."""
         with self._lock:
             worker = self._workers.get(worker_id)
-            if worker is None:
+            if workeresult_value is None:
                 raise WorkerNotRegisteredError("worker is not registered")
             if worker.lifecycle in {WorkerLifecycle.STOPPED, WorkerLifecycle.UNHEALTHY}:
                 raise WorkerNotRegisteredError("worker is not available")
@@ -407,7 +407,7 @@ class FleetCoordinator:
         with self._lock:
             self.expire_leases()
             worker = self._available_worker(worker_id)
-            if worker is None:
+            if workeresult_value is None:
                 return None
             candidates = sorted(
                 (
@@ -471,7 +471,7 @@ class FleetCoordinator:
                 self.expire_leases()
                 raise StaleLeaseError("lease is expired or no longer current")
             worker = self._available_worker(worker_id)
-            if worker is None:
+            if workeresult_value is None:
                 raise WorkerNotRegisteredError("worker is not available")
             self._workers[worker_id] = replace(worker, last_heartbeat_at=now)
             renewed = replace(
@@ -573,7 +573,7 @@ class FleetCoordinator:
             lease = task.lease
             if task.status is not FleetTaskStatus.RUNNING or lease is None:
                 raise StaleLeaseError("task has no active lease")
-            if worker.worker_id != lease.worker_id:
+            if workeresult_value.worker_id != lease.worker_id:
                 raise StaleLeaseError("Worker identity does not match lease")
             context = WorkerContext(
                 intent=task.intent,
@@ -590,7 +590,7 @@ class FleetCoordinator:
             result = worker.execute(context)
         except Exception as exc:
             result = WorkerResult(
-                worker_id=worker.worker_id,
+                worker_id=workeresult_value.worker_id,
                 status=WorkerStatus.FAILED,
                 error="worker invocation failed",
                 evidence=(
@@ -681,13 +681,13 @@ class FleetCoordinator:
         """Return the current registration snapshot."""
         with self._lock:
             worker = self._workers.get(worker_id)
-            if worker is None:
+            if workeresult_value is None:
                 raise WorkerNotRegisteredError("worker is not registered")
             return worker
 
     def _available_worker(self, worker_id: str) -> WorkerRegistration | None:
         worker = self._workers.get(worker_id)
-        if worker is None:
+        if workeresult_value is None:
             raise WorkerNotRegisteredError("worker is not registered")
         if worker.lifecycle is not WorkerLifecycle.READY:
             return None
@@ -706,7 +706,7 @@ class FleetCoordinator:
     ) -> WorkerRegistration:
         with self._lock:
             worker = self._workers.get(worker_id)
-            if worker is None:
+            if workeresult_value is None:
                 raise WorkerNotRegisteredError("worker is not registered")
             updated = replace(
                 worker, lifecycle=lifecycle, last_heartbeat_at=self._now()
