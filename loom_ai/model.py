@@ -49,14 +49,14 @@ class ModelToolResult:
     """Structured result returned to the provider after a trusted tool invocation."""
 
     call_id: str
-    capability_ref: str
+    tool_name: str
     result: object
 
     def __post_init__(self) -> None:
         if not self.call_id.strip():
             raise ValueError("ModelToolResult call_id must not be empty")
-        if not self.capability_ref.strip():
-            raise ValueError("ModelToolResult capability_ref must not be empty")
+        if not self.tool_name.strip():
+            raise ValueError("ModelToolResult tool_name must not be empty")
         try:
             json.dumps(self.result, allow_nan=False)
         except (TypeError, ValueError) as exc:
@@ -106,14 +106,14 @@ class ModelToolCall:
     """Provider-neutral request to invoke one explicitly configured capability."""
 
     call_id: str
-    capability_ref: str
+    tool_name: str
     arguments: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.call_id.strip():
             raise ValueError("ModelToolCall call_id must not be empty")
-        if not self.capability_ref.strip():
-            raise ValueError("ModelToolCall capability_ref must not be empty")
+        if not self.tool_name.strip():
+            raise ValueError("ModelToolCall tool_name must not be empty")
         if not isinstance(self.arguments, Mapping):
             raise ValueError("ModelToolCall arguments must be an object")
         if any(not isinstance(key, str) for key in self.arguments):
