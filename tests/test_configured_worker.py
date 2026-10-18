@@ -385,7 +385,18 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
     from loom_ai import ModelToolCall
 
     raw = raw_config()
-    raw["tools"] = [{"capability_ref": "repository.read", "required": True}]
+    raw["tools"] = [
+        {
+            "capability_ref": "repository.read",
+            "required": True,
+            "input_schema_ref": "repository-read",
+        }
+    ]
+    input_schema = {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"],
+    }
     provider = StructuredRecordingProvider(
         [
             ModelResponse(
@@ -412,6 +423,10 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
             "repository.read": lambda args: calls.append(args) or {"contents": "hello"}
         },
         approval_authorizer=lambda _config, _capability, _args: True,
+        input_schema_validators={
+            "repository-read": lambda args: isinstance(args.get("path"), str)
+        },
+        tool_schemas={"repository-read": input_schema},
     )
 
     result = worker.execute(WorkerContext(intent=Intent(goal="summarize README")))
@@ -427,6 +442,7 @@ def test_configured_worker_executes_structured_tool_and_returns_to_model() -> No
         ModelToolDefinition(
             name="repository.read",
             description="Configured capability repository.read",
+            input_schema=input_schema,
         ),
     )
     assert followup.tool_results == (
