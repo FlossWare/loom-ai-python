@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from threading import Event, Thread
 from urllib.request import Request, urlopen
 
