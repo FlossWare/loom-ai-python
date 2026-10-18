@@ -184,3 +184,25 @@ def test_http_server_rejects_non_json_result_before_commit() -> None:
     finally:
         server.close()
         thread.join(timeout=2)
+
+
+def test_worker_http_cannot_submit_tasks_around_orchestrator() -> None:
+    _coordinator, server, thread, base_url = start_server()
+    try:
+        with pytest.raises(HTTPError) as error:
+            post_json(
+                base_url,
+                "/tasks",
+                {
+                    "execution_id": "exec-bypass",
+                    "intent": {
+                        "goal": "must use Orchestrator",
+                        "intent_id": "intent-bypass",
+                    },
+                    "required_capabilities": ["cap.a"],
+                },
+            )
+        assert error.value.code == 404
+    finally:
+        server.close()
+        thread.join(timeout=2)
