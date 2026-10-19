@@ -218,6 +218,31 @@ class Arbiter:
             status=result_status,
             output=outputs,
             evidence=tuple(evidence),
+            artifacts=tuple(
+                artifact for result in outputs for artifact in result.artifacts
+            ),
+            observations=tuple(
+                observation for result in outputs for observation in result.observations
+            ),
+            provenance={
+                "implementation_id": self.worker_id,
+                "event_ids": list(
+                    dict.fromkeys(
+                        event_id
+                        for result in outputs
+                        for event_id in result.provenance.get("event_ids", [])
+                    )
+                ),
+                "attributes": {
+                    "contributors": [
+                        {
+                            "worker_id": result.worker_id,
+                            "provenance": dict(result.provenance),
+                        }
+                        for result in outputs
+                    ]
+                },
+            },
             error="" if result_status is not WorkerStatus.FAILED else reason,
             error_code=(
                 "deadline_exceeded"
