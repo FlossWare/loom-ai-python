@@ -8,6 +8,8 @@ from pathlib import Path
 from threading import Event, Thread
 from urllib.request import Request, urlopen
 
+import pytest
+
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.fleet import FleetCoordinator, FleetTaskStatus
@@ -23,15 +25,23 @@ from loom_ai.worker import CancellationToken, WorkerContext, WorkerResult, Worke
 class _RemoteWorker:
     worker_id = "remote-worker"
 
+    def __init__(self, status: WorkerStatus = WorkerStatus.SUCCESS) -> None:
+        self.status = status
+
     def execute(self, context: WorkerContext) -> WorkerResult:
+        failed = self.status is WorkerStatus.FAILED
         return WorkerResult(
             worker_id=self.worker_id,
-            status=WorkerStatus.SUCCESS,
+            status=self.status,
             output={
                 "goal": context.intent.goal,
                 "task_id": context.metadata["task_id"],
             },
             evidence=({"type": "remote-worker-completed"},),
+            error="deliberate remote worker failure" if failed else "",
+            metadata=(
+                {"failure_category": "worker.execution_failed"} if failed else {}
+            ),
         )
 
 
@@ -53,8 +63,17 @@ def _post_json(base_url: str, path: str, payload: dict) -> dict:
         return json.load(response)
 
 
-def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
+@pytest.mark.parametrize(
+    ("worker_status", "expected_status"),
+    [
+        (WorkerStatus.SUCCESS, "success"),
+        (WorkerStatus.FAILED, "failed"),
+    ],
+)
+def test_rest_observes_remote_worker_outcome_through_orchestrator_and_fleet(
     tmp_path: Path,
+    worker_status: WorkerStatus,
+    expected_status: str,
 ) -> None:
     token = "fleet-integration-test-token"
     coordinator = FleetCoordinator(
@@ -73,7 +92,7 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
     agent = FleetWorkerAgent(
         f"http://127.0.0.1:{fleet_server.port}",
         token,
-        _RemoteWorker(),
+        _RemoteWorker(status=worker_status),
         implementation_id="test-remote-worker",
         capabilities=["loom.execute"],
         lease_seconds=3,
@@ -113,25 +132,39 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
             },
         )
         execution_id = response["execution_id"]
-        assert response["status"] == "success"
-        assert response["result"]["status"] == "success"
+        assert response["status"] == expected_status
+        assert response["result"]["status"] == expected_status
         dispatched = response["result"]["output"][0]
         assert dispatched["metadata"]["fleet_execution_id"] == execution_id
+        if worker_status is WorkerStatus.FAILED:
+            assert dispatched["error"] == "deliberate remote worker failure"
         task_id = dispatched["metadata"]["fleet_task_id"]
 
         request = Request(f"{base_url}/executions/{execution_id}")
         with urlopen(request, timeout=2) as result_response:
             execution = json.load(result_response)
         assert execution["lifecycle"] == "completed"
-        assert execution["status"] == "success"
+        assert execution["status"] == expected_status
+        if worker_status is WorkerStatus.FAILED:
+            assert (
+                execution["result"]["output"][0]["error"]
+                == "deliberate remote worker failure"
+            )
 
         task = coordinator.observe_task(task_id)
-        assert task.status is FleetTaskStatus.SUCCEEDED
+        expected_task_status = (
+            FleetTaskStatus.SUCCEEDED
+            if worker_status is WorkerStatus.SUCCESS
+            else FleetTaskStatus.FAILED
+        )
+        assert task.status is expected_task_status
         assert task.execution_id == execution_id
         assert task.result is not None
         assert (
             task.result.output["goal"] == "inspect a repository through a remote worker"
         )
+        if worker_status is WorkerStatus.FAILED:
+            assert task.result.metadata["failure_category"] == "worker.execution_failed"
     finally:
         stop_agent.set()
         agent_thread.join(timeout=2)
