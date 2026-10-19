@@ -136,14 +136,14 @@ class WorkerResult:
     status: WorkerStatus
     output: Any = None
     evidence: tuple[Mapping[str, Any], ...] = ()
-    artifacts: tuple[Mapping[str, Any], ...] = ()
-    observations: tuple[Mapping[str, Any], ...] = ()
-    provenance: Mapping[str, Any] = field(default_factory=dict)
     error: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
     error_code: str = ""
     retryable: bool = False
     outcome: WorkerOutcome | None = None
+    artifacts: tuple[Mapping[str, Any], ...] = ()
+    observations: tuple[Mapping[str, Any], ...] = ()
+    provenance: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Normalize legacy status to a canonical outcome and reject contradictions."""
