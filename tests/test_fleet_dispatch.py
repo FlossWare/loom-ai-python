@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event, Thread
@@ -23,15 +25,23 @@ from loom_ai.worker import CancellationToken, WorkerContext, WorkerResult, Worke
 class _RemoteWorker:
     worker_id = "remote-worker"
 
+    def __init__(self, status: WorkerStatus = WorkerStatus.SUCCESS) -> None:
+        self.status = status
+
     def execute(self, context: WorkerContext) -> WorkerResult:
+        failed = self.status is WorkerStatus.FAILED
         return WorkerResult(
             worker_id=self.worker_id,
-            status=WorkerStatus.SUCCESS,
+            status=self.status,
             output={
                 "goal": context.intent.goal,
                 "task_id": context.metadata["task_id"],
             },
             evidence=({"type": "remote-worker-completed"},),
+            error="deliberate remote worker failure" if failed else "",
+            metadata=(
+                {"failure_category": "worker.execution_failed"} if failed else {}
+            ),
         )
 
 
@@ -53,8 +63,17 @@ def _post_json(base_url: str, path: str, payload: dict) -> dict:
         return json.load(response)
 
 
-def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
+@pytest.mark.parametrize(
+    ("worker_status", "expected_status"),
+    [
+        (WorkerStatus.SUCCESS, "success"),
+        (WorkerStatus.FAILED, "failed"),
+    ],
+)
+def test_rest_observes_remote_worker_outcome_through_orchestrator_and_fleet(
     tmp_path: Path,
+    worker_status: WorkerStatus,
+    expected_status: str,
 ) -> None:
     token = "fleet-integration-test-token"
     coordinator = FleetCoordinator(
@@ -73,7 +92,7 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
     agent = FleetWorkerAgent(
         f"http://127.0.0.1:{fleet_server.port}",
         token,
-        _RemoteWorker(),
+        _RemoteWorker(status=worker_status),
         implementation_id="test-remote-worker",
         capabilities=["loom.execute"],
         lease_seconds=3,
@@ -113,8 +132,10 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
             },
         )
         execution_id = response["execution_id"]
-        assert response["status"] == "success"
-        assert response["result"]["status"] == "success"
+        assert response["status"] == expected_status
+        assert response["result"]["status"] == expected_status
+        if worker_status is WorkerStatus.FAILED:
+            assert "deliberate remote worker failure" in response["result"]["error"]
         dispatched = response["result"]["output"][0]
         assert dispatched["metadata"]["fleet_execution_id"] == execution_id
         task_id = dispatched["metadata"]["fleet_task_id"]
@@ -123,15 +144,24 @@ def test_rest_intent_executes_through_orchestrator_and_remote_fleet_worker(
         with urlopen(request, timeout=2) as result_response:
             execution = json.load(result_response)
         assert execution["lifecycle"] == "completed"
-        assert execution["status"] == "success"
+        assert execution["status"] == expected_status
+        if worker_status is WorkerStatus.FAILED:
+            assert "deliberate remote worker failure" in execution["result"]["error"]
 
         task = coordinator.observe_task(task_id)
-        assert task.status is FleetTaskStatus.SUCCEEDED
+        expected_task_status = (
+            FleetTaskStatus.SUCCEEDED
+            if worker_status is WorkerStatus.SUCCESS
+            else FleetTaskStatus.FAILED
+        )
+        assert task.status is expected_task_status
         assert task.execution_id == execution_id
         assert task.result is not None
         assert (
             task.result.output["goal"] == "inspect a repository through a remote worker"
         )
+        if worker_status is WorkerStatus.FAILED:
+            assert task.result.metadata["failure_category"] == "worker.execution_failed"
     finally:
         stop_agent.set()
         agent_thread.join(timeout=2)
@@ -225,100 +255,3 @@ def test_fleet_dispatch_deadline_wins_over_preexisting_cancellation(
     assert task.result is not None
     assert task.result.metadata["termination_cause"] == "deadline_exceeded"
 
-
-
-def test_rest_observes_remote_worker_failure_and_persisted_fleet_failure(
-    tmp_path: Path,
-) -> None:
-    class _FailingRemoteWorker:
-        worker_id = "remote-failing-worker"
-
-        def execute(self, context: WorkerContext) -> WorkerResult:
-            return WorkerResult(
-                worker_id=self.worker_id,
-                status=WorkerStatus.FAILED,
-                error="deliberate remote worker failure",
-                metadata={"failure_category": "worker.execution_failed"},
-            )
-
-    token = "fleet-failure-integration-test-token"
-    coordinator = FleetCoordinator(
-        state_store=FileFleetStateStore(tmp_path / "fleet-state")
-    )
-    fleet_server = FleetHTTPServer(
-        coordinator,
-        bearer_token=token,
-        host="127.0.0.1",
-        port=0,
-    )
-    fleet_httpd = fleet_server.start()
-    fleet_thread = Thread(target=fleet_httpd.serve_forever, daemon=True)
-    fleet_thread.start()
-
-    agent = FleetWorkerAgent(
-        f"http://127.0.0.1:{fleet_server.port}",
-        token,
-        _FailingRemoteWorker(),
-        implementation_id="test-failing-remote-worker",
-        capabilities=["loom.execute"],
-        lease_seconds=3,
-        poll_interval_seconds=0.01,
-    )
-    stop_agent = Event()
-
-    def run_agent() -> None:
-        agent.run_forever(stop_agent)
-
-    agent_thread = Thread(target=run_agent, daemon=True)
-    agent_thread.start()
-
-    dispatch = FleetDispatchWorker(
-        coordinator,
-        required_capabilities=["loom.execute"],
-        wait_timeout_seconds=3,
-        poll_interval_seconds=0.01,
-    )
-    orchestrator = Orchestrator(
-        Arbiter([dispatch], _evaluate, max_retries=0),
-        execution_store=FileExecutionStateStore(tmp_path / "execution-state"),
-    )
-    loom_server = LoomServer(orchestrator=orchestrator, host="127.0.0.1", port=0)
-    httpd = loom_server.start()
-    http_thread = Thread(target=httpd.serve_forever, daemon=True)
-    http_thread.start()
-    base_url = f"http://127.0.0.1:{loom_server.port}"
-
-    try:
-        response = _post_json(
-            base_url,
-            "/intents",
-            {
-                "goal": "exercise observable remote worker failure",
-                "intent_id": "intent-fleet-rest-failure",
-            },
-        )
-        execution_id = response["execution_id"]
-        assert response["status"] == "failed"
-        assert response["result"]["status"] == "failed"
-        assert "deliberate remote worker failure" in response["result"]["error"]
-        dispatched = response["result"]["output"][0]
-        task_id = dispatched["metadata"]["fleet_task_id"]
-
-        with urlopen(f"{base_url}/executions/{execution_id}", timeout=2) as result_response:
-            execution = json.load(result_response)
-        assert execution["execution_id"] == execution_id
-        assert execution["lifecycle"] == "completed"
-        assert execution["status"] == "failed"
-        assert "deliberate remote worker failure" in execution["result"]["error"]
-
-        task = coordinator.observe_task(task_id)
-        assert task.status is FleetTaskStatus.FAILED
-        assert task.result is not None
-        assert task.result.metadata["failure_category"] == "worker.execution_failed"
-    finally:
-        stop_agent.set()
-        agent_thread.join(timeout=2)
-        loom_server.close()
-        http_thread.join(timeout=2)
-        fleet_server.close()
-        fleet_thread.join(timeout=2)
