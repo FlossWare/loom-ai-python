@@ -180,12 +180,19 @@ class WorkerResult:
             WorkerOutcome.POLICY_DENIED,
             WorkerOutcome.CANCELLED,
             WorkerOutcome.DEADLINE_EXCEEDED,
-        } and not (self.error_code or self.error or outcome is WorkerOutcome.CANCELLED):
-            raise ValueError(f"outcome {outcome.value!r} requires a failure category")
+        } and not self.error_code:
+            category = {
+                WorkerOutcome.FAILED: "execution_failed",
+                WorkerOutcome.POLICY_DENIED: "policy_denied",
+                WorkerOutcome.CANCELLED: "cancelled",
+                WorkerOutcome.DEADLINE_EXCEEDED: "deadline_exceeded",
+            }[outcome]
+            object.__setattr__(self, "error_code", category)
 
     @property
     def successful(self) -> bool:
-        return self.outcome is WorkerOutcome.SUCCEEDED
+        """Compatibility view of the legacy status; inspect outcome for partial success."""
+        return self.status is WorkerStatus.SUCCESS
 
 
 class Worker(Protocol):
