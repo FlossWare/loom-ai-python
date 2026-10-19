@@ -58,6 +58,7 @@ def test_arbiter_retry_limit_counts_retries_after_initial_attempt() -> None:
     assert result.status is WorkerStatus.FAILED
     assert result.error == "retry limit exceeded"
 
+
 class FailedWorker:
     worker_id = "failed-worker"
 
