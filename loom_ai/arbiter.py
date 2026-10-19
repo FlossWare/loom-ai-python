@@ -132,6 +132,13 @@ class Arbiter:
                 return self._result(outputs, evidence, "interrupted", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.RETRY:
+                if result.status is WorkerStatus.FAILED and not result.retryable:
+                    return self._result(
+                        outputs,
+                        evidence,
+                        "failed",
+                        result.error or "worker failure is not retryable",
+                    )
                 # max_retries counts retries after the initial attempt. Once
                 # this attempt reaches that limit, do not execute the worker
                 # one extra time merely to discover that another retry is denied.
