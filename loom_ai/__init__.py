@@ -59,6 +59,7 @@ from loom_ai.worker import (
     CancellationToken,
     Worker,
     WorkerContext,
+    WorkerOutcome,
     WorkerResult,
     WorkerStatus,
 )
@@ -119,6 +120,7 @@ __all__ = [
     "Worker",
     "WorkerContext",
     "WorkerEvaluation",
+    "WorkerOutcome",
     "WorkerResult",
     "WorkerStatus",
     "activate_model_worker",
