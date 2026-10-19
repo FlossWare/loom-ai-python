@@ -120,9 +120,21 @@ class Arbiter:
                     "deadline exceeded",
                     termination_cause="deadline_exceeded",
                 )
-            if result.status is WorkerStatus.CANCELLED:
-                return self._result(outputs, evidence, "cancelled")
-            if result.metadata.get("continuation_pending") is True:
+            if result.outcome is WorkerOutcome.CANCELLED:
+                return self._result(outputs, evidence, "cancelled", result.error)
+            if result.outcome is WorkerOutcome.DEADLINE_EXCEEDED:
+                return self._result(
+                    outputs,
+                    evidence,
+                    "failed",
+                    result.error or "deadline exceeded",
+                    termination_cause="deadline_exceeded",
+                )
+            if result.outcome is WorkerOutcome.POLICY_DENIED:
+                return self._result(
+                    outputs, evidence, "policy_denied", result.error or "policy denied"
+                )
+            if result.outcome is WorkerOutcome.PARTIALLY_SUCCEEDED:
                 return self._result(
                     outputs,
                     evidence,
@@ -138,6 +150,22 @@ class Arbiter:
                 return self._result(outputs, evidence, "interrupted", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.RETRY:
+                if result.outcome in {
+                    WorkerOutcome.POLICY_DENIED,
+                    WorkerOutcome.CANCELLED,
+                    WorkerOutcome.DEADLINE_EXCEEDED,
+                }:
+                    return self._result(
+                        outputs,
+                        evidence,
+                        "failed",
+                        result.error or f"{result.outcome.value} is terminal",
+                        termination_cause=(
+                            "deadline_exceeded"
+                            if result.outcome is WorkerOutcome.DEADLINE_EXCEEDED
+                            else None
+                        ),
+                    )
                 if result.status is WorkerStatus.FAILED and not result.retryable:
                     return self._result(
                         outputs,
@@ -183,6 +211,7 @@ class Arbiter:
             "interrupted": WorkerStatus.SUCCESS,
             "failed": WorkerStatus.FAILED,
             "cancelled": WorkerStatus.CANCELLED,
+            "policy_denied": WorkerStatus.FAILED,
         }[status]
         return WorkerResult(
             worker_id=self.worker_id,
@@ -193,6 +222,8 @@ class Arbiter:
             error_code=(
                 "deadline_exceeded"
                 if termination_cause == "deadline_exceeded"
+                else "policy_denied"
+                if status == "policy_denied"
                 else "execution_failed"
                 if result_status is WorkerStatus.FAILED
                 else ""
@@ -206,6 +237,7 @@ class Arbiter:
                     else WorkerOutcome.FAILED
                 ),
                 "cancelled": WorkerOutcome.CANCELLED,
+                "policy_denied": WorkerOutcome.POLICY_DENIED,
             }[status],
             metadata={
                 "arbiter_id": self.worker_id,
