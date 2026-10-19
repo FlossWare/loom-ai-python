@@ -14,11 +14,8 @@ from urllib.request import Request, urlopen
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
-from loom_ai.fleet import (
-    FleetCoordinator,
-    FleetTaskStatus,
-    WorkerNotRegisteredError,
-)
+import loom_ai.fleet as fleet
+
 from loom_ai.fleet_dispatch import FleetDispatchWorker
 from loom_ai.fleet_http import FleetHTTPServer
 from loom_ai.fleet_state import FileFleetStateStore
@@ -69,7 +66,7 @@ def _post_json(base_url: str, path: str, payload: dict) -> dict:
 def test_rest_execution_completes_in_a_separate_worker_process(tmp_path: Path) -> None:
     token = "fleet-process-integration-token"
     (tmp_path / "fleet_test_worker.py").write_text(_WORKER_MODULE, encoding="utf-8")
-    coordinator = FleetCoordinator(
+    coordinator = fleet.FleetCoordinator(
         state_store=FileFleetStateStore(tmp_path / "fleet-state")
     )
     fleet_server = FleetHTTPServer(
@@ -139,7 +136,7 @@ def test_rest_execution_completes_in_a_separate_worker_process(tmp_path: Path) -
             try:
                 coordinator.observe_worker("subprocess-worker")
                 break
-            except WorkerNotRegisteredError:
+            except fleet.WorkerNotRegisteredError:
                 if time.monotonic() >= registration_deadline:
                     raise AssertionError("fleet Worker process did not register")
                 time.sleep(0.02)
@@ -166,7 +163,7 @@ def test_rest_execution_completes_in_a_separate_worker_process(tmp_path: Path) -
         assert execution["lifecycle"] == "completed"
 
         task = coordinator.observe_task(task_id)
-        assert task.status is FleetTaskStatus.SUCCEEDED
+        assert task.status is fleet.FleetTaskStatus.SUCCEEDED
         assert task.result is not None
         assert task.result.output == {
             "goal": "execute through a separate process",
