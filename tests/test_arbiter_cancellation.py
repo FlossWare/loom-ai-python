@@ -106,3 +106,47 @@ def test_arbiter_retries_explicitly_retryable_failure() -> None:
 
     assert worker.calls == 2
     assert result.status is WorkerStatus.SUCCESS
+
+
+def test_worker_result_maps_deadline_and_interruption_to_canonical_outcomes() -> None:
+    from loom_ai.worker import WorkerOutcome
+
+    deadline = WorkerResult(
+        worker_id="deadline-worker",
+        status=WorkerStatus.FAILED,
+        error="deadline exceeded",
+        error_code="deadline_exceeded",
+        metadata={"termination_cause": "deadline_exceeded"},
+    )
+    interrupted = WorkerResult(
+        worker_id="interrupted-worker",
+        status=WorkerStatus.SUCCESS,
+        metadata={"continuation_pending": True},
+    )
+
+    assert deadline.outcome is WorkerOutcome.DEADLINE_EXCEEDED
+    assert not deadline.successful
+    assert interrupted.outcome is WorkerOutcome.PARTIALLY_SUCCEEDED
+    assert not interrupted.successful
+
+
+def test_worker_result_rejects_contradictory_status_and_outcome() -> None:
+    import pytest
+
+    from loom_ai.worker import WorkerOutcome
+
+    with pytest.raises(ValueError, match="contradicts status"):
+        WorkerResult(
+            worker_id="contradictory-worker",
+            status=WorkerStatus.SUCCESS,
+            outcome=WorkerOutcome.FAILED,
+            error="failed",
+            error_code="execution_failed",
+        )
+
+
+def test_worker_result_failure_requires_a_failure_category() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="requires a failure category"):
+        WorkerResult(worker_id="uncategorized-worker", status=WorkerStatus.FAILED)
