@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-
-import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event, Thread
 from urllib.request import Request, urlopen
+
+import pytest
 
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
