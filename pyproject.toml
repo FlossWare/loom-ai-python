@@ -22,6 +22,7 @@ classifiers = [
 
 [project.scripts]
 loom-server = "loom_ai.server:main"
+loom-fleet-worker = "loom_ai.fleet_worker_cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "ruff>=0.4", "build>=1.2", "pip-audit>=2.7", "mcp>=2,<3"]

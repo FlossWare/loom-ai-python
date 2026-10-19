@@ -99,26 +99,22 @@ loom-server \
 The server submits each `POST /intents` execution through a FleetDispatchWorker,
 which creates a correlated task in the coordinator and waits for a remote Worker
 result. Workers register with the same token and advertise the `loom.execute`
-capability. A minimal polling loop for a configured Worker looks like this:
+capability. Install the package in the Worker environment and run the independent
+process with a module/attribute reference to a Worker instance or class:
 
-```python
-import os
-import time
-
-from loom_ai.fleet_http import FleetWorkerAgent
-from my_worker import worker
-
-agent = FleetWorkerAgent(
-    "http://127.0.0.1:8001",
-    os.environ["LOOM_FLEET_TOKEN"],
-    worker,
-    implementation_id="my-worker-0.1",
-    capabilities=["loom.execute"],
-)
-while True:
-    if not agent.run_once():
-        time.sleep(0.1)
+```sh
+export LOOM_FLEET_TOKEN='the-same-long-random-token'
+export LOOM_FLEET_URL='http://127.0.0.1:8001'
+loom-fleet-worker \
+  --worker my_worker:worker \
+  --implementation-id my-worker-0.1 \
+  --capability loom.execute
 ```
+
+The Worker module must be importable in that environment. The runner handles
+registration, polling, lease renewal, result reporting, and graceful drain on
+interrupt. For a remote host, set `LOOM_FLEET_URL` to the fleet listener's
+reachable address and secure the connection with a trusted network or TLS proxy.
 
 The worker-facing HTTP service accepts registration, heartbeat, claim, lease-renewal,
 result, and observation operations. It deliberately does not expose task submission:
