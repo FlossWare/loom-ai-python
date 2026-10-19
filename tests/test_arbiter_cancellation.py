@@ -127,7 +127,7 @@ def test_worker_result_maps_deadline_and_interruption_to_canonical_outcomes() ->
     assert deadline.outcome is WorkerOutcome.DEADLINE_EXCEEDED
     assert not deadline.successful
     assert interrupted.outcome is WorkerOutcome.PARTIALLY_SUCCEEDED
-    assert not interrupted.successful
+    assert interrupted.successful  # Legacy status remains compatible; outcome disambiguates it.
 
 
 def test_worker_result_rejects_contradictory_status_and_outcome() -> None:
@@ -145,11 +145,11 @@ def test_worker_result_rejects_contradictory_status_and_outcome() -> None:
         )
 
 
-def test_worker_result_failure_requires_a_failure_category() -> None:
-    import pytest
+def test_worker_result_failure_gets_a_stable_default_category() -> None:
+    result = WorkerResult(worker_id="uncategorized-worker", status=WorkerStatus.FAILED)
 
-    with pytest.raises(ValueError, match="requires a failure category"):
-        WorkerResult(worker_id="uncategorized-worker", status=WorkerStatus.FAILED)
+    assert result.error_code == "execution_failed"
+    assert result.outcome.value == "failed"
 
 
 def test_arbiter_preserves_policy_denial_and_never_retries_it() -> None:
