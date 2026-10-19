@@ -127,6 +127,8 @@ class WorkerResult:
     evidence: tuple[Mapping[str, Any], ...] = ()
     error: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    error_code: str = ""
+    retryable: bool = False
 
     @property
     def successful(self) -> bool:
