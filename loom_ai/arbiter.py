@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Iterable
 
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    Worker,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 
 class ArbiterDecision(str, Enum):
@@ -184,6 +190,23 @@ class Arbiter:
             output=outputs,
             evidence=tuple(evidence),
             error="" if result_status is not WorkerStatus.FAILED else reason,
+            error_code=(
+                "deadline_exceeded"
+                if termination_cause == "deadline_exceeded"
+                else "execution_failed"
+                if result_status is WorkerStatus.FAILED
+                else ""
+            ),
+            outcome={
+                "complete": WorkerOutcome.SUCCEEDED,
+                "interrupted": WorkerOutcome.PARTIALLY_SUCCEEDED,
+                "failed": (
+                    WorkerOutcome.DEADLINE_EXCEEDED
+                    if termination_cause == "deadline_exceeded"
+                    else WorkerOutcome.FAILED
+                ),
+                "cancelled": WorkerOutcome.CANCELLED,
+            }[status],
             metadata={
                 "arbiter_id": self.worker_id,
                 "workers": [result.worker_id for result in outputs],
