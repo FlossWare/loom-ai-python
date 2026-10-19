@@ -150,3 +150,61 @@ def test_worker_result_failure_requires_a_failure_category() -> None:
 
     with pytest.raises(ValueError, match="requires a failure category"):
         WorkerResult(worker_id="uncategorized-worker", status=WorkerStatus.FAILED)
+
+
+def test_arbiter_preserves_policy_denial_and_never_retries_it() -> None:
+    from loom_ai.worker import WorkerOutcome
+
+    class DeniedWorker:
+        worker_id = "denied-worker"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, context: WorkerContext) -> WorkerResult:
+            self.calls += 1
+            return WorkerResult(
+                worker_id=self.worker_id,
+                status=WorkerStatus.FAILED,
+                outcome=WorkerOutcome.POLICY_DENIED,
+                error="policy denied",
+                error_code="policy_denied",
+                retryable=True,
+            )
+
+    worker = DeniedWorker()
+
+    def evaluator(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
+        return WorkerEvaluation(ArbiterDecision.RETRY)
+
+    result = Arbiter(workers=[worker], evaluator=evaluator, max_retries=2).execute(
+        WorkerContext(intent=Intent(goal="preserve policy denial"))
+    )
+
+    assert worker.calls == 1
+    assert result.outcome is WorkerOutcome.POLICY_DENIED
+    assert result.error == "policy denied"
+
+
+def test_arbiter_preserves_worker_deadline_outcome() -> None:
+    from loom_ai.worker import WorkerOutcome
+
+    class DeadlineWorker:
+        worker_id = "deadline-worker"
+
+        def execute(self, context: WorkerContext) -> WorkerResult:
+            return WorkerResult(
+                worker_id=self.worker_id,
+                status=WorkerStatus.FAILED,
+                outcome=WorkerOutcome.DEADLINE_EXCEEDED,
+                error="worker deadline",
+                error_code="deadline_exceeded",
+            )
+
+    result = Arbiter(
+        workers=[DeadlineWorker()],
+        evaluator=lambda result, context: WorkerEvaluation(ArbiterDecision.RETRY),
+    ).execute(WorkerContext(intent=Intent(goal="preserve worker deadline")))
+
+    assert result.outcome is WorkerOutcome.DEADLINE_EXCEEDED
+    assert result.metadata["termination_cause"] == "deadline_exceeded"
