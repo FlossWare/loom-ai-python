@@ -22,7 +22,6 @@ from loom_ai.orchestrator import Orchestrator
 from loom_ai.server import LoomServer
 from loom_ai.worker import WorkerResult
 
-
 _WORKER_MODULE = """
 from loom_ai.worker import WorkerResult, WorkerStatus
 
