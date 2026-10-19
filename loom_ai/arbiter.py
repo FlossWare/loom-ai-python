@@ -121,7 +121,7 @@ class Arbiter:
                     termination_cause="deadline_exceeded",
                 )
             if result.outcome is WorkerOutcome.CANCELLED:
-                return self._result(outputs, evidence, "cancelled", result.error)
+                return self._result(outputs, evidence, "cancelled")
             if result.outcome is WorkerOutcome.DEADLINE_EXCEEDED:
                 return self._result(
                     outputs,
