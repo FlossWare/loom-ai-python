@@ -208,3 +208,33 @@ def test_arbiter_preserves_worker_deadline_outcome() -> None:
 
     assert result.outcome is WorkerOutcome.DEADLINE_EXCEEDED
     assert result.metadata["termination_cause"] == "deadline_exceeded"
+
+
+def test_arbiter_preserves_artifacts_observations_and_provenance() -> None:
+    class EvidenceWorker:
+        worker_id = "evidence-worker"
+
+        def execute(self, context: WorkerContext) -> WorkerResult:
+            return WorkerResult(
+                worker_id=self.worker_id,
+                status=WorkerStatus.SUCCESS,
+                evidence=({"evidence_id": "e-1"},),
+                artifacts=({"artifact_id": "a-1"},),
+                observations=({"kind": "fact", "value": "observed"},),
+                provenance={
+                    "implementation_id": "fixture-worker",
+                    "event_ids": ["event-1"],
+                    "attributes": {"source": "test"},
+                },
+            )
+
+    result = Arbiter(
+        workers=[EvidenceWorker()],
+        evaluator=lambda result, context: WorkerEvaluation(ArbiterDecision.COMPLETE),
+    ).execute(WorkerContext(intent=Intent(goal="preserve result lineage")))
+
+    assert result.artifacts == ({"artifact_id": "a-1"},)
+    assert result.observations == ({"kind": "fact", "value": "observed"},)
+    assert result.provenance["event_ids"] == ["event-1"]
+    contributor = result.provenance["attributes"]["contributors"][0]
+    assert contributor["provenance"]["attributes"]["source"] == "test"
