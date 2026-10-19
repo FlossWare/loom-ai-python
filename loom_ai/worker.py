@@ -12,11 +12,22 @@ from loom_ai.intent import Intent
 
 
 class WorkerStatus(str, Enum):
-    """Outcome of a Worker invocation."""
+    """Legacy execution status retained for compatibility."""
 
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class WorkerOutcome(str, Enum):
+    """Canonical result outcome aligned with the language-neutral Loom contract."""
+
+    SUCCEEDED = "succeeded"
+    PARTIALLY_SUCCEEDED = "partially_succeeded"
+    FAILED = "failed"
+    POLICY_DENIED = "policy_denied"
+    CANCELLED = "cancelled"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
 
 
 class CancellationToken:
@@ -129,10 +140,52 @@ class WorkerResult:
     metadata: Mapping[str, Any] = field(default_factory=dict)
     error_code: str = ""
     retryable: bool = False
+    outcome: WorkerOutcome | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize legacy status to a canonical outcome and reject contradictions."""
+        if not self.worker_id.strip():
+            raise ValueError("worker_id must not be empty")
+        outcome = self.outcome
+        if outcome is None:
+            termination_cause = self.metadata.get("termination_cause")
+            if self.status is WorkerStatus.CANCELLED:
+                outcome = WorkerOutcome.CANCELLED
+            elif self.status is WorkerStatus.FAILED:
+                outcome = (
+                    WorkerOutcome.DEADLINE_EXCEEDED
+                    if termination_cause == "deadline_exceeded"
+                    else WorkerOutcome.FAILED
+                )
+            elif self.metadata.get("continuation_pending") is True:
+                outcome = WorkerOutcome.PARTIALLY_SUCCEEDED
+            else:
+                outcome = WorkerOutcome.SUCCEEDED
+            object.__setattr__(self, "outcome", outcome)
+
+        compatible_statuses = {
+            WorkerOutcome.SUCCEEDED: WorkerStatus.SUCCESS,
+            WorkerOutcome.PARTIALLY_SUCCEEDED: WorkerStatus.SUCCESS,
+            WorkerOutcome.FAILED: WorkerStatus.FAILED,
+            WorkerOutcome.POLICY_DENIED: WorkerStatus.FAILED,
+            WorkerOutcome.CANCELLED: WorkerStatus.CANCELLED,
+            WorkerOutcome.DEADLINE_EXCEEDED: WorkerStatus.FAILED,
+        }
+        if compatible_statuses[outcome] is not self.status:
+            raise ValueError(
+                f"outcome {outcome.value!r} contradicts status {self.status.value!r}"
+            )
+        if outcome in {
+            WorkerOutcome.FAILED,
+            WorkerOutcome.POLICY_DENIED,
+            WorkerOutcome.CANCELLED,
+            WorkerOutcome.DEADLINE_EXCEEDED,
+        } and not (self.error_code or self.error or outcome is WorkerOutcome.CANCELLED):
+            raise ValueError(f"outcome {outcome.value!r} requires a failure category")
 
     @property
     def successful(self) -> bool:
-        return self.status is WorkerStatus.SUCCESS
+        return self.outcome is WorkerOutcome.SUCCEEDED
 
 
 class Worker(Protocol):
