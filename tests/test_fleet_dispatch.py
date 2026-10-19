@@ -134,10 +134,10 @@ def test_rest_observes_remote_worker_outcome_through_orchestrator_and_fleet(
         execution_id = response["execution_id"]
         assert response["status"] == expected_status
         assert response["result"]["status"] == expected_status
-        if worker_status is WorkerStatus.FAILED:
-            assert "deliberate remote worker failure" in response["result"]["error"]
         dispatched = response["result"]["output"][0]
         assert dispatched["metadata"]["fleet_execution_id"] == execution_id
+        if worker_status is WorkerStatus.FAILED:
+            assert dispatched["error"] == "deliberate remote worker failure"
         task_id = dispatched["metadata"]["fleet_task_id"]
 
         request = Request(f"{base_url}/executions/{execution_id}")
@@ -146,7 +146,10 @@ def test_rest_observes_remote_worker_outcome_through_orchestrator_and_fleet(
         assert execution["lifecycle"] == "completed"
         assert execution["status"] == expected_status
         if worker_status is WorkerStatus.FAILED:
-            assert "deliberate remote worker failure" in execution["result"]["error"]
+            assert (
+                execution["result"]["output"][0]["error"]
+                == "deliberate remote worker failure"
+            )
 
         task = coordinator.observe_task(task_id)
         expected_task_status = (
@@ -254,4 +257,3 @@ def test_fleet_dispatch_deadline_wins_over_preexisting_cancellation(
     assert task.status is FleetTaskStatus.FAILED
     assert task.result is not None
     assert task.result.metadata["termination_cause"] == "deadline_exceeded"
-
