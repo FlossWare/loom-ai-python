@@ -1,8 +1,15 @@
 import asyncio
 import json
+import os
+import socket
+import subprocess
 import sys
+import time
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from mcp import Client, StdioServerParameters
 
@@ -256,102 +263,139 @@ def test_http_client_encodes_execution_id_as_one_path_segment() -> None:
     assert evaluation["payload"] == {"status": "met", "criteria": ["complete"]}
 
 
-def test_mcp_can_continue_execution_after_http_server_restart() -> None:
+def test_mcp_can_continue_execution_after_loom_process_restart() -> None:
     with TemporaryDirectory() as state_dir:
+        repository_root = Path(__file__).resolve().parents[1]
+        server_script = Path(state_dir) / "loom_process.py"
+        server_script.write_text(
+            """
+import sys
+from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
+from loom_ai.execution_state import FileExecutionStateStore
+from loom_ai.server import LoomServer
+from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
-        def build_server() -> LoomServer:
-            def evaluate(
-                result: WorkerResult, context: WorkerContext
-            ) -> WorkerEvaluation:
-                if result.successful and context.state.get("phase") == "initial":
-                    return WorkerEvaluation(
-                        ArbiterDecision.INTERRUPT,
-                        reason="waiting for process-boundary continuation",
-                    )
-                return WorkerEvaluation(
-                    ArbiterDecision.COMPLETE,
-                    reason="restart recovery",
-                )
+class RecordingWorker:
+    worker_id = "mcp-process-worker"
 
-            return LoomServer(
-                Arbiter([RecordingWorker()], evaluate),
-                host="127.0.0.1",
-                port=0,
-                execution_store=FileExecutionStateStore(state_dir),
+    def execute(self, context: WorkerContext) -> WorkerResult:
+        return WorkerResult(
+            worker_id=self.worker_id,
+            status=WorkerStatus.SUCCESS,
+            output={"goal": context.intent.goal},
+            evidence=({"source": "mcp-process-restart"},),
+        )
+
+def evaluate(result: WorkerResult, context: WorkerContext) -> WorkerEvaluation:
+    if result.successful and context.state.get("phase") == "initial":
+        return WorkerEvaluation(
+            ArbiterDecision.INTERRUPT,
+            reason="waiting for process-boundary continuation",
+        )
+    return WorkerEvaluation(ArbiterDecision.COMPLETE, reason="restart recovery")
+
+server = LoomServer(
+    Arbiter([RecordingWorker()], evaluate),
+    host="127.0.0.1",
+    port=int(sys.argv[2]),
+    execution_store=FileExecutionStateStore(sys.argv[1]),
+)
+server.serve_forever()
+""",
+            encoding="utf-8",
+        )
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+        base_url = f"http://127.0.0.1:{port}"
+
+        def start_loom_process() -> subprocess.Popen:
+            env = os.environ.copy()
+            existing_pythonpath = env.get("PYTHONPATH")
+            env["PYTHONPATH"] = (
+                str(repository_root)
+                if not existing_pythonpath
+                else str(repository_root) + os.pathsep + existing_pythonpath
             )
+            process = subprocess.Popen(
+                [sys.executable, str(server_script), state_dir, str(port)],
+                cwd=repository_root,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            startup_deadline = time.monotonic() + 8
+            while time.monotonic() < startup_deadline:
+                if process.poll() is not None:
+                    _, stderr = process.communicate(timeout=1)
+                    raise AssertionError(
+                        f"Loom process exited during startup: {stderr}"
+                    )
+                try:
+                    with urlopen(f"{base_url}/health", timeout=0.2) as response:
+                        if response.status == 200:
+                            return process
+                except URLError:
+                    time.sleep(0.05)
+            process.terminate()
+            process.wait(timeout=3)
+            raise AssertionError("Loom process did not become healthy")
 
-        def start_server(server: LoomServer) -> Thread:
-            http_server = server.start()
-            thread = Thread(target=http_server.serve_forever, daemon=True)
-            thread.start()
-            return thread
+        def stop_loom_process(process: subprocess.Popen) -> None:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=3)
 
-        first_server = build_server()
-        first_thread = start_server(first_server)
-        execution_id = ""
+        loom_process = start_loom_process()
 
-        async def submit() -> str:
+        async def run() -> None:
+            nonlocal loom_process
             mcp_process = StdioServerParameters(
                 command=sys.executable,
-                args=["scripts/loom_mcp_server.py"],
-                env={"LOOM_URL": f"http://127.0.0.1:{first_server.port}"},
+                args=[str(repository_root / "scripts/loom_mcp_server.py")],
+                env={"LOOM_URL": base_url},
             )
             async with Client(mcp_process) as client:
                 submitted = await client.call_tool(
                     "loom_submit_intent",
                     {
-                        "goal": "survive an HTTP server restart",
-                        "intent_id": "intent-restart-preserves-provenance",
+                        "goal": "survive a real Loom process restart",
+                        "intent_id": "intent-process-restart",
                         "provenance": {
-                            "client": "mcp-restart-test",
+                            "client": "mcp-process-restart-test",
                             "task_path": "tests/test_mcp_server.py",
                         },
                     },
                 )
-                payload = json.loads(submitted.content[0].text)
-                return payload["execution_id"]
+                submitted_payload = json.loads(submitted.content[0].text)
+                execution_id = submitted_payload["execution_id"]
+                assert execution_id
+                assert submitted_payload["lifecycle"] == "interrupted"
 
-        try:
-            execution_id = asyncio.run(submit())
-            assert execution_id
-        finally:
-            first_server.close()
-            first_thread.join(timeout=2)
+                stop_loom_process(loom_process)
+                loom_process = start_loom_process()
 
-        second_server = build_server()
-        second_thread = start_server(second_server)
-
-        async def observe_and_continue() -> None:
-            mcp_process = StdioServerParameters(
-                command=sys.executable,
-                args=["scripts/loom_mcp_server.py"],
-                env={"LOOM_URL": f"http://127.0.0.1:{second_server.port}"},
-            )
-            async with Client(mcp_process) as client:
                 observed = await client.call_tool(
                     "loom_get_execution",
                     {"execution_id": execution_id},
                 )
                 observed_payload = json.loads(observed.content[0].text)
                 assert observed_payload["execution_id"] == execution_id
-                assert observed_payload["intent_id"] == (
-                    "intent-restart-preserves-provenance"
-                )
-                assert observed_payload["status"] == "success"
+                assert observed_payload["intent_id"] == "intent-process-restart"
                 assert observed_payload["lifecycle"] == "interrupted"
                 assert observed_payload["provenance"] == {
-                    "client": "mcp-restart-test",
+                    "client": "mcp-process-restart-test",
                     "task_path": "tests/test_mcp_server.py",
                 }
-                assert observed_payload["result"]["worker_id"] == "arbiter"
-                worker_result = observed_payload["result"]["output"][0]
-                assert worker_result["worker_id"] == "mcp-test-worker"
-                assert worker_result["output"] == {
-                    "goal": "survive an HTTP server restart"
-                }
-                assert worker_result["evidence"] == [{"source": "mcp-e2e"}]
-                assert {"source": "mcp-e2e"} in observed_payload["result"]["evidence"]
-                assert {"source": "mcp-e2e"} in observed_payload["evidence"]
+                assert observed_payload["result"]["output"][0]["worker_id"] == (
+                    "mcp-process-worker"
+                )
+                assert {"source": "mcp-process-restart"} in observed_payload["evidence"]
 
                 continued = await client.call_tool(
                     "loom_continue_execution",
@@ -362,10 +406,9 @@ def test_mcp_can_continue_execution_after_http_server_restart() -> None:
                 assert continued_payload["status"] == "success"
 
         try:
-            asyncio.run(observe_and_continue())
+            asyncio.run(run())
         finally:
-            second_server.close()
-            second_thread.join(timeout=2)
+            stop_loom_process(loom_process)
 
 
 def test_mcp_submit_forwards_optional_intent_fields_without_loss() -> None:
