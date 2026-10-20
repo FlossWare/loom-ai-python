@@ -134,18 +134,23 @@ def test_live_postgres_fleet_snapshot_recovery_when_configured():
         "workers": [],
         "tasks": [{"task_id": "task-live", "status": "queued"}],
     }
-    store = PostgresFleetStateStore.connect(dsn)
+    writer = PostgresFleetStateStore.connect(dsn)
+    reader = None
     try:
-        store.initialize()
-        store.create(coordinator_id, expected)
-        assert store.load(coordinator_id) == expected
+        writer.initialize()
+        writer.create(coordinator_id, expected)
         replacement = {"workers": [], "tasks": []}
-        store.save(coordinator_id, replacement)
-        assert store.load(coordinator_id) == replacement
+        writer.save(coordinator_id, replacement)
+
+        # A separate pool models a process restart and verifies durable recovery.
+        reader = PostgresFleetStateStore.connect(dsn)
+        assert reader.load(coordinator_id) == replacement
     finally:
-        with store.pool.connection() as connection:
+        with writer.pool.connection() as connection:
             connection.execute(
                 "DELETE FROM loom_runtime.fleet_states WHERE coordinator_id = %s",
                 (coordinator_id,),
             )
-        store.close()
+        if reader is not None:
+            reader.close()
+        writer.close()
