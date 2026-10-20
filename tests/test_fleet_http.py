@@ -208,7 +208,6 @@ def test_worker_http_cannot_submit_tasks_around_orchestrator() -> None:
         thread.join(timeout=2)
 
 
-
 def test_http_rejects_conflicting_retryability_fields() -> None:
     coordinator, server, thread, base_url = start_server()
     agent = FleetWorkerAgent(
