@@ -22,7 +22,13 @@ from loom_ai.fleet import (
     WorkerNotRegisteredError,
 )
 from loom_ai.intent import Intent
-from loom_ai.worker import Worker, WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    Worker,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 MAX_FLEET_PAYLOAD_BYTES = 10 * 1024 * 1024
 
