@@ -692,6 +692,10 @@ def _cancelled_result(result: WorkerResult, token: CancellationToken) -> WorkerR
         output=result.output,
         evidence=evidence,
         error="",
+        retryable=False,
+        artifacts=result.artifacts,
+        observations=result.observations,
+        provenance=result.provenance,
         metadata={**result.metadata, "cancellation_requested": True},
     )
 
@@ -782,9 +786,15 @@ def _result_to_dict(result: WorkerResult) -> dict[str, Any]:
     return {
         "worker_id": result.worker_id,
         "status": result.status.value,
+        "outcome": result.outcome.value,
         "output": _json_value(result.output),
         "evidence": _json_value(result.evidence),
         "error": result.error,
+        "error_code": result.error_code,
+        "retryable": result.retryable,
+        "artifacts": _json_value(result.artifacts),
+        "observations": _json_value(result.observations),
+        "provenance": _json_value(result.provenance),
         "metadata": _json_value(result.metadata),
     }
 
