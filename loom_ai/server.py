@@ -31,7 +31,6 @@ from loom_ai.fleet import FleetCoordinator
 from loom_ai.fleet_dispatch import FleetDispatchWorker
 from loom_ai.fleet_http import FleetHTTPServer
 from loom_ai.fleet_state import FileFleetStateStore
-from loom_ai.postgres_fleet_state import PostgresFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import (
     ExecutionAlreadyExistsError,
@@ -40,6 +39,7 @@ from loom_ai.orchestrator import (
     parse_deadline,
 )
 from loom_ai.postgres_execution_state import PostgresExecutionStateStore
+from loom_ai.postgres_fleet_state import PostgresFleetStateStore
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
