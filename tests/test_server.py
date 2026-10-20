@@ -388,9 +388,7 @@ def test_server_cli_uses_postgres_environment_when_no_state_dir(monkeypatch) -> 
         captured["dsn"] = dsn
         return FakePostgresStore()
 
-    monkeypatch.setattr(
-        server_module.PostgresExecutionStateStore, "connect", connect
-    )
+    monkeypatch.setattr(server_module.PostgresExecutionStateStore, "connect", connect)
     monkeypatch.setattr(server_module.LoomServer, "serve_forever", lambda _server: None)
     monkeypatch.setenv("FLOSSWARE_LOOM_POSTGRES_DSN", "postgresql://environment")
     monkeypatch.setattr(sys, "argv", ["loom-server"])
