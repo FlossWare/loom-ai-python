@@ -86,6 +86,12 @@ class FleetDispatchWorker:
                         "fleet_execution_id": task.execution_id,
                         "fleet_attempt": task.attempt,
                     },
+                    error_code=task.result.error_code,
+                    retryable=task.result.retryable,
+                    outcome=task.result.outcome,
+                    artifacts=task.result.artifacts,
+                    observations=task.result.observations,
+                    provenance=task.result.provenance,
                 )
 
             termination_cause = context.termination_cause
