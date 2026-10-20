@@ -106,7 +106,7 @@ class PostgresExecutionStateStore:
                     """,
                     (
                         execution.execution_id,
-                        execution.representation_version,
+                        payload["representation_version"],
                         _jsonb(payload),
                     ),
                 )
@@ -136,7 +136,7 @@ class PostgresExecutionStateStore:
                     """,
                     (
                         execution.execution_id,
-                        execution.representation_version,
+                        payload["representation_version"],
                         _jsonb(payload),
                     ),
                 )
@@ -153,7 +153,7 @@ class PostgresExecutionStateStore:
             with self.pool.connection() as connection:
                 cursor = connection.execute(
                     f"""
-                    SELECT payload
+                    SELECT representation_version, payload
                     FROM {self.schema}.execution_states
                     WHERE execution_id = %s
                     """,
@@ -166,7 +166,7 @@ class PostgresExecutionStateStore:
             ) from exc
         if row is None:
             return None
-        payload = row[0]
+        stored_version, payload = row
         if isinstance(payload, str):
             try:
                 payload = json.loads(payload)
@@ -174,6 +174,10 @@ class PostgresExecutionStateStore:
                 raise ExecutionStateCorruptError(
                     f"durable state for execution {execution_id!r} is corrupt"
                 ) from exc
+        if not isinstance(payload, dict) or payload.get("representation_version") != stored_version:
+            raise ExecutionStateCorruptError(
+                f"durable state for execution {execution_id!r} is corrupt"
+            )
         try:
             return _execution_from_dict(payload, expected_id=execution_id)
         except (TypeError, KeyError, ValueError) as exc:
