@@ -175,18 +175,25 @@ def test_live_postgres_execution_recovery_when_configured():
         pytest.skip("set FLOSSWARE_LOOM_POSTGRES_DSN to run live PostgreSQL recovery")
 
     execution = replace(build_state(), execution_id=f"loom-recovery-{uuid4().hex}")
-    store = PostgresExecutionStateStore.connect(dsn)
+    writer = PostgresExecutionStateStore.connect(dsn)
+    reader = None
     try:
-        store.initialize()
-        store.create(execution)
-        store.save(replace(execution, status="success", lifecycle="completed"))
-        restored = store.load(execution.execution_id)
-        assert restored == replace(execution, status="success", lifecycle="completed")
+        writer.initialize()
+        writer.create(execution)
+        expected = replace(execution, status="success", lifecycle="completed")
+        writer.save(expected)
+
+        # A separate pool models a process restart: recovery must not depend on
+        # in-memory state held by the writer's connection pool.
+        reader = PostgresExecutionStateStore.connect(dsn)
+        restored = reader.load(execution.execution_id)
+        assert restored == expected
     finally:
-        if store.load(execution.execution_id) is not None:
-            with store.pool.connection() as connection:
-                connection.execute(
-                    "DELETE FROM loom_runtime.execution_states WHERE execution_id = %s",
-                    (execution.execution_id,),
-                )
-        store.close()
+        with writer.pool.connection() as connection:
+            connection.execute(
+                "DELETE FROM loom_runtime.execution_states WHERE execution_id = %s",
+                (execution.execution_id,),
+            )
+        if reader is not None:
+            reader.close()
+        writer.close()
