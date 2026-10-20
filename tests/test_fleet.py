@@ -440,7 +440,9 @@ def test_cancel_running_task_fences_late_worker_result() -> None:
 
 
 
-def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(tmp_path) -> None:
+def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(
+    tmp_path,
+) -> None:
     store = FileFleetStateStore(tmp_path / "fleet-state")
     coordinator = FleetCoordinator(state_store=store)
     coordinator.register_worker("worker-a", "impl-a", ["search.read"])
