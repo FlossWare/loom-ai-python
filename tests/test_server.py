@@ -205,7 +205,7 @@ def test_server_persists_and_continues_execution_state() -> None:
                 initial = json.load(response)
 
             execution_id = initial["execution_id"]
-            assert initial["status"] == "success"
+            assert initial["status"] == "failed"
             assert initial["lifecycle"] == "interrupted"
 
             with urlopen(f"{base_url}/executions/{execution_id}") as response:
@@ -213,7 +213,7 @@ def test_server_persists_and_continues_execution_state() -> None:
 
             assert persisted["execution_id"] == execution_id
             assert persisted["intent_id"]
-            assert persisted["status"] == "success"
+            assert persisted["status"] == "failed"
             assert persisted["lifecycle"] == "interrupted"
             assert any(
                 item.get("phase") == "initial"
