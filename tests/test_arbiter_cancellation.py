@@ -128,9 +128,8 @@ def test_worker_result_maps_deadline_and_interruption_to_canonical_outcomes() ->
     assert deadline.outcome is WorkerOutcome.DEADLINE_EXCEEDED
     assert not deadline.successful
     assert interrupted.outcome is WorkerOutcome.PARTIALLY_SUCCEEDED
-    assert (
-        interrupted.successful
-    )  # Legacy status remains compatible; outcome disambiguates it.
+    assert interrupted.status is WorkerStatus.SUCCESS
+    assert not interrupted.successful
 
 
 def test_worker_result_rejects_contradictory_status_and_outcome() -> None:
