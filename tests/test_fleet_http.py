@@ -221,7 +221,9 @@ def test_http_rejects_conflicting_retryability_fields() -> None:
     try:
         agent.register()
         coordinator.submit_task(
-            Intent(goal="reject conflicting retryability", intent_id="intent-retryable"),
+            Intent(
+                goal="reject conflicting retryability", intent_id="intent-retryable"
+            ),
             execution_id="exec-retryable",
             task_id="task-retryable",
             required_capabilities=["cap.a"],
