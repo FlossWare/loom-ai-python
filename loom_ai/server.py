@@ -648,8 +648,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--postgres-dsn",
-        default=os.environ.get("FLOSSWARE_LOOM_POSTGRES_DSN"),
-        help="PostgreSQL DSN for durable execution state (or FLOSSWARE_LOOM_POSTGRES_DSN)",
+        help="PostgreSQL DSN for durable execution state (defaults to FLOSSWARE_LOOM_POSTGRES_DSN unless --state-dir is set)",
     )
     parser.add_argument(
         "--postgres-schema",
@@ -659,8 +658,11 @@ def main() -> None:
     args = parser.parse_args()
     if args.state_dir and args.postgres_dsn:
         parser.error("choose either --state-dir or --postgres-dsn, not both")
+    postgres_dsn = args.postgres_dsn or (
+        os.environ.get("FLOSSWARE_LOOM_POSTGRES_DSN") if not args.state_dir else None
+    )
     fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
-    if args.fleet_state_dir and not (args.state_dir or args.postgres_dsn):
+    if args.fleet_state_dir and not (args.state_dir or postgres_dsn):
         parser.error(
             "--fleet-state-dir requires --state-dir or --postgres-dsn for durable execution identity"
         )
@@ -706,9 +708,9 @@ def main() -> None:
     postgres_store = None
     if args.state_dir:
         execution_store = FileExecutionStateStore(args.state_dir)
-    elif args.postgres_dsn:
+    elif postgres_dsn:
         postgres_store = PostgresExecutionStateStore.connect(
-            args.postgres_dsn,
+            postgres_dsn,
             schema=args.postgres_schema,
         )
         try:
