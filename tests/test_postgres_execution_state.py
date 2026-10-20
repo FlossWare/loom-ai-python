@@ -116,7 +116,7 @@ def test_postgres_store_load_round_trips_execution_state(monkeypatch):
     monkeypatch.setattr("loom_ai.postgres_execution_state._jsonb", lambda value: value)
     pool = FakePool()
     expected = build_state()
-    pool.connection_instance.next_row = (_execution_to_dict(expected),)
+    pool.connection_instance.next_row = (2, _execution_to_dict(expected))
 
     restored = PostgresExecutionStateStore(pool).load(expected.execution_id)
 
@@ -133,12 +133,16 @@ def test_postgres_store_distinguishes_missing_and_corrupt_state(monkeypatch):
     store = PostgresExecutionStateStore(pool)
     assert store.load("missing") is None
 
-    pool.connection_instance.next_row = ("{not-json",)
+    pool.connection_instance.next_row = (2, "{not-json")
     with pytest.raises(ExecutionStateCorruptError):
         store.load("execution-postgres-1")
 
-    pool.connection_instance.next_row = ({"execution_id": "different"},)
+    pool.connection_instance.next_row = (2, {"execution_id": "different"})
     with pytest.raises(ExecutionStateCorruptError):
+        store.load("execution-postgres-1")
+
+    pool.connection_instance.next_row = (1, _execution_to_dict(build_state()))
+    with pytest.raises(ExecutionStateCorruptError, match="corrupt"):
         store.load("execution-postgres-1")
 
 
