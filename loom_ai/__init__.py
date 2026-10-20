@@ -49,6 +49,7 @@ from loom_ai.orchestrator import (
     Orchestrator,
     OrchestratorSubmission,
 )
+from loom_ai.postgres_execution_state import PostgresExecutionStateStore
 from loom_ai.pipeline import (
     ArbitrationStage,
     SequentialArbitrationPipeline,
@@ -111,6 +112,7 @@ __all__ = [
     "ModelWorker",
     "Orchestrator",
     "OrchestratorSubmission",
+    "PostgresExecutionStateStore",
     "SequentialArbitrationPipeline",
     "StageEvaluation",
     "ValidatedWorkerConfiguration",
