@@ -667,7 +667,13 @@ class FleetCoordinator:
                     attempt_history=history,
                 )
             elif (
-                retryable
+                result.outcome
+                not in {
+                    WorkerOutcome.POLICY_DENIED,
+                    WorkerOutcome.CANCELLED,
+                    WorkerOutcome.DEADLINE_EXCEEDED,
+                }
+                and retryable
                 and task.attempt < task.max_attempts
                 and not self._deadline_expired(task, now)
             ):
