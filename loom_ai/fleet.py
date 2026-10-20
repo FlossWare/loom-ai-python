@@ -652,8 +652,14 @@ class FleetCoordinator:
                     "worker_id": worker_id,
                     "generation": generation,
                     "status": result.status.value,
+                    "outcome": result.outcome.value,
                     "error": result.error,
+                    "error_code": result.error_code,
+                    "retryable": result.retryable,
                     "evidence": tuple(result.evidence),
+                    "artifacts": tuple(result.artifacts),
+                    "observations": tuple(result.observations),
+                    "provenance": dict(result.provenance),
                 },
             )
             if result.status is WorkerStatus.SUCCESS:
