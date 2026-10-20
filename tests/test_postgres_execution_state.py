@@ -9,7 +9,6 @@ from loom_ai.execution_state import (
     ExecutionState,
     ExecutionStateConflictError,
     ExecutionStateCorruptError,
-    ExecutionStateError,
     _execution_to_dict,
 )
 from loom_ai.intent import Intent
@@ -143,14 +142,13 @@ def test_postgres_store_distinguishes_missing_and_corrupt_state(monkeypatch):
         store.load("execution-postgres-1")
 
 
-def test_postgres_store_create_rejects_duplicate_identity():
+def test_postgres_store_create_rejects_duplicate_identity(monkeypatch):
+    monkeypatch.setattr("loom_ai.postgres_execution_state._jsonb", lambda value: value)
     pool = FakePool()
     pool.connection_instance.error = UniqueViolation("duplicate")
     store = PostgresExecutionStateStore(pool)
 
-    with pytest.raises(
-        ExecutionStateConflictError, match="execution already exists"
-    ):
+    with pytest.raises(ExecutionStateConflictError, match="execution already exists"):
         store.create(build_state())
 
 
