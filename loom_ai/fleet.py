@@ -16,7 +16,13 @@ from uuid import uuid4
 
 from loom_ai.fleet_state import FleetStateError, FleetStateStore
 from loom_ai.intent import Intent
-from loom_ai.worker import Worker, WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    Worker,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 
 class FleetError(RuntimeError):
