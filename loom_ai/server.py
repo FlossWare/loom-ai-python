@@ -639,7 +639,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--fleet-postgres-dsn",
-        help="PostgreSQL DSN for fleet snapshots (defaults to FLOSSWARE_LOOM_FLEET_POSTGRES_DSN unless --fleet-state-dir is set)",
+        help=(
+            "PostgreSQL DSN for fleet snapshots (defaults to "
+            "FLOSSWARE_LOOM_FLEET_POSTGRES_DSN unless --fleet-state-dir is set)"
+        ),
     )
     parser.add_argument(
         "--fleet-postgres-schema",
@@ -658,7 +661,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--postgres-dsn",
-        help="PostgreSQL DSN for durable execution state (defaults to FLOSSWARE_LOOM_POSTGRES_DSN unless --state-dir is set)",
+        help=(
+            "PostgreSQL DSN for durable execution state (defaults to "
+            "FLOSSWARE_LOOM_POSTGRES_DSN unless --state-dir is set)"
+        ),
     )
     parser.add_argument(
         "--postgres-schema",
@@ -672,7 +678,9 @@ def main() -> None:
         os.environ.get("FLOSSWARE_LOOM_POSTGRES_DSN") if not args.state_dir else None
     )
     if args.fleet_state_dir and args.fleet_postgres_dsn:
-        parser.error("choose either --fleet-state-dir or --fleet-postgres-dsn, not both")
+        parser.error(
+            "choose either --fleet-state-dir or --fleet-postgres-dsn, not both"
+        )
     fleet_postgres_dsn = args.fleet_postgres_dsn or (
         os.environ.get("FLOSSWARE_LOOM_FLEET_POSTGRES_DSN")
         if not args.fleet_state_dir
@@ -682,7 +690,8 @@ def main() -> None:
     fleet_enabled = bool(args.fleet_state_dir or fleet_postgres_dsn)
     if fleet_enabled and not (args.state_dir or postgres_dsn):
         parser.error(
-            "fleet persistence requires --state-dir or --postgres-dsn for durable execution identity"
+            "fleet persistence requires --state-dir or --postgres-dsn "
+            "for durable execution identity"
         )
     if fleet_enabled and not fleet_token:
         parser.error("fleet persistence requires LOOM_FLEET_TOKEN to be set")
