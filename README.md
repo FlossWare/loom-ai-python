@@ -81,7 +81,7 @@ PostgreSQL JSONB snapshots:
 
 ```sh
 pip install -e '.[postgres]'
-export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5432/loom'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5433/loom'
 loom-server --host 127.0.0.1 --port 8000 --postgres-schema loom_runtime
 ```
 
