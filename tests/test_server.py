@@ -396,3 +396,74 @@ def test_server_cli_uses_postgres_environment_when_no_state_dir(monkeypatch) -> 
     server_module.main()
 
     assert captured["dsn"] == "postgresql://environment"
+
+
+def test_server_cli_can_enable_postgres_fleet_recovery(monkeypatch) -> None:
+    from loom_ai import server as server_module
+
+    class FakeExecutionStore:
+        def __init__(self):
+            self.initialized = False
+            self.closed = False
+
+        def initialize(self):
+            self.initialized = True
+
+        def close(self):
+            self.closed = True
+
+    class FakeFleetStore:
+        def __init__(self):
+            self.initialized = False
+            self.closed = False
+            self.snapshot = None
+
+        def initialize(self):
+            self.initialized = True
+
+        def close(self):
+            self.closed = True
+
+        def load(self, coordinator_id):
+            return self.snapshot
+
+        def save(self, coordinator_id, snapshot):
+            self.snapshot = snapshot
+
+        def create(self, coordinator_id, snapshot):
+            self.snapshot = snapshot
+
+    execution_store = FakeExecutionStore()
+    fleet_store = FakeFleetStore()
+    captured = {}
+
+    monkeypatch.setattr(
+        server_module.PostgresExecutionStateStore,
+        "connect",
+        lambda dsn, *, schema: execution_store,
+    )
+    monkeypatch.setattr(
+        server_module.PostgresFleetStateStore,
+        "connect",
+        lambda dsn, *, schema: fleet_store,
+    )
+
+    def stop_after_configuration(server) -> None:
+        captured["durable"] = server.orchestrator.durable_enabled
+
+    monkeypatch.setattr(
+        server_module.LoomServer, "serve_forever", stop_after_configuration
+    )
+    monkeypatch.setenv("FLOSSWARE_LOOM_POSTGRES_DSN", "postgresql://execution")
+    monkeypatch.setenv("FLOSSWARE_LOOM_FLEET_POSTGRES_DSN", "postgresql://fleet")
+    monkeypatch.setenv("LOOM_FLEET_TOKEN", "test-token")
+    monkeypatch.setattr(sys, "argv", ["loom-server"])
+
+    server_module.main()
+
+    assert captured["durable"] is True
+    assert execution_store.initialized is True
+    assert execution_store.closed is True
+    assert fleet_store.initialized is True
+    assert fleet_store.closed is True
+    assert fleet_store.snapshot is not None
