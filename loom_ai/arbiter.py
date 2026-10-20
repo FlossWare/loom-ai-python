@@ -138,8 +138,8 @@ class Arbiter:
                 return self._result(
                     outputs,
                     evidence,
-                    "interrupted",
-                    str(result.metadata.get("reason") or "nested Arbiter interrupted"),
+                    "partial",
+                    str(result.metadata.get("reason") or "nested Arbiter partially succeeded"),
                 )
 
             evaluation = self.evaluator(result, child_context)
@@ -147,7 +147,13 @@ class Arbiter:
                 return self._result(outputs, evidence, "complete", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.INTERRUPT:
-                return self._result(outputs, evidence, "interrupted", evaluation.reason)
+                return self._result(
+                    outputs,
+                    evidence,
+                    "interrupted",
+                    evaluation.reason or "execution interrupted before completion",
+                    termination_cause="interrupted",
+                )
 
             if evaluation.decision is ArbiterDecision.RETRY:
                 if result.outcome in {
@@ -208,7 +214,8 @@ class Arbiter:
     ) -> WorkerResult:
         result_status = {
             "complete": WorkerStatus.SUCCESS,
-            "interrupted": WorkerStatus.SUCCESS,
+            "interrupted": WorkerStatus.FAILED,
+            "partial": WorkerStatus.SUCCESS,
             "failed": WorkerStatus.FAILED,
             "cancelled": WorkerStatus.CANCELLED,
             "policy_denied": WorkerStatus.FAILED,
@@ -247,6 +254,8 @@ class Arbiter:
             error_code=(
                 "deadline_exceeded"
                 if termination_cause == "deadline_exceeded"
+                else "execution_interrupted"
+                if termination_cause == "interrupted"
                 else "policy_denied"
                 if status == "policy_denied"
                 else "execution_failed"
@@ -255,7 +264,8 @@ class Arbiter:
             ),
             outcome={
                 "complete": WorkerOutcome.SUCCEEDED,
-                "interrupted": WorkerOutcome.PARTIALLY_SUCCEEDED,
+                "interrupted": WorkerOutcome.FAILED,
+                "partial": WorkerOutcome.PARTIALLY_SUCCEEDED,
                 "failed": (
                     WorkerOutcome.DEADLINE_EXCEEDED
                     if termination_cause == "deadline_exceeded"
@@ -268,7 +278,11 @@ class Arbiter:
                 "arbiter_id": self.worker_id,
                 "workers": [result.worker_id for result in outputs],
                 "reason": reason,
-                **({"continuation_pending": True} if status == "interrupted" else {}),
+                **(
+                    {"continuation_pending": True}
+                    if status in {"interrupted", "partial"}
+                    else {}
+                ),
                 **(
                     {"termination_cause": termination_cause}
                     if termination_cause is not None
