@@ -242,7 +242,6 @@ def test_arbiter_preserves_artifacts_observations_and_provenance() -> None:
     assert contributor["provenance"]["attributes"]["source"] == "test"
 
 
-
 def test_worker_result_requires_explicit_outcome_for_pending_continuation() -> None:
     import pytest
 
