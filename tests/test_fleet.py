@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.fleet import (
     FleetConflictError,
     FleetCoordinator,
@@ -14,6 +13,7 @@ from loom_ai.fleet import (
     WorkerLifecycle,
     WorkerNotRegisteredError,
 )
+from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 
