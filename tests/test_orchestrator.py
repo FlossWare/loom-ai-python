@@ -619,12 +619,9 @@ def test_active_cancellation_is_pending_until_worker_returns(tmp_path) -> None:
             {"kind": "cancellation", "value": "pending"},
         )
         assert submissions[0].result.provenance["event_ids"] == ["cancel-event"]
-        assert (
-            submissions[0].result.provenance["attributes"]["contributors"][0][
-                "provenance"
-            ]["event_ids"]
-            == ["cancel-event"]
-        )
+        assert submissions[0].result.provenance["attributes"]["contributors"][0][
+            "provenance"
+        ]["event_ids"] == ["cancel-event"]
 
         state = orchestrator.observe("active-execution")
         assert state.status == "cancelled"
