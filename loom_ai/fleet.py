@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from loom_ai.fleet_state import FleetStateError, FleetStateStore
 from loom_ai.intent import Intent
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import Worker, WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 
 
 class FleetError(RuntimeError):
@@ -218,6 +218,12 @@ class FleetCoordinator:
                             "output": result_value.output,
                             "evidence": list(result_value.evidence),
                             "error": result_value.error,
+                            "error_code": result_value.error_code,
+                            "retryable": result_value.retryable,
+                            "outcome": result_value.outcome.value,
+                            "artifacts": list(result_value.artifacts),
+                            "observations": list(result_value.observations),
+                            "provenance": dict(result_value.provenance),
                             "metadata": dict(result_value.metadata),
                         }
                     ),
@@ -282,6 +288,16 @@ class FleetCoordinator:
                         output=raw_result.get("output"),
                         evidence=tuple(raw_result.get("evidence", ())),
                         error=raw_result.get("error", ""),
+                        error_code=raw_result.get("error_code", ""),
+                        retryable=raw_result.get("retryable", False),
+                        outcome=(
+                            WorkerOutcome(raw_result["outcome"])
+                            if raw_result.get("outcome") is not None
+                            else None
+                        ),
+                        artifacts=tuple(raw_result.get("artifacts", ())),
+                        observations=tuple(raw_result.get("observations", ())),
+                        provenance=dict(raw_result.get("provenance", {})),
                         metadata=dict(raw_result.get("metadata", {})),
                     )
                 )
