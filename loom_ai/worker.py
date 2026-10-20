@@ -200,8 +200,8 @@ class WorkerResult:
 
     @property
     def successful(self) -> bool:
-        """Compatibility view of the legacy status; inspect outcome for partial success."""
-        return self.status is WorkerStatus.SUCCESS
+        """Whether the canonical outcome establishes full success."""
+        return self.outcome is WorkerOutcome.SUCCEEDED
 
 
 class Worker(Protocol):
