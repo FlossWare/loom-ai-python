@@ -491,6 +491,13 @@ def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(
         "event_ids": ["event-1"],
         "attributes": {"region": "test"},
     }
+    history = restored_task.attempt_history[0]
+    assert history["outcome"] == "failed"
+    assert history["error_code"] == "remote_unavailable"
+    assert history["retryable"] is True
+    assert history["artifacts"] == [{"artifact_id": "artifact-1"}]
+    assert history["observations"] == [{"kind": "health", "value": "degraded"}]
+    assert history["provenance"]["event_ids"] == ["event-1"]
 
 @pytest.mark.parametrize(
     ("worker_status", "outcome", "expected_status"),
