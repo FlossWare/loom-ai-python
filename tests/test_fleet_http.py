@@ -12,6 +12,7 @@ from loom_ai.fleet_http import FleetHTTPServer, FleetWorkerAgent
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
+
 class RecordingWorker:
     def __init__(self, worker_id: str, output: str) -> None:
         self._worker_id = worker_id
