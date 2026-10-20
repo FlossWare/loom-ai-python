@@ -38,6 +38,7 @@ from loom_ai.orchestrator import (
     Orchestrator,
     parse_deadline,
 )
+from loom_ai.postgres_execution_state import PostgresExecutionStateStore
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
@@ -641,15 +642,27 @@ def main() -> None:
     parser.add_argument(
         "--state-dir",
         help=(
-            "directory for durable execution snapshots; without this option, "
-            "execution observation and continuation are unavailable"
+            "directory for durable execution snapshots; without this option or "
+            "--postgres-dsn, execution observation and continuation are unavailable"
         ),
     )
+    parser.add_argument(
+        "--postgres-dsn",
+        default=os.environ.get("FLOSSWARE_LOOM_POSTGRES_DSN"),
+        help="PostgreSQL DSN for durable execution state (or FLOSSWARE_LOOM_POSTGRES_DSN)",
+    )
+    parser.add_argument(
+        "--postgres-schema",
+        default="loom_runtime",
+        help="schema for Loom runtime state (default: loom_runtime)",
+    )
     args = parser.parse_args()
+    if args.state_dir and args.postgres_dsn:
+        parser.error("choose either --state-dir or --postgres-dsn, not both")
     fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
-    if args.fleet_state_dir and not args.state_dir:
+    if args.fleet_state_dir and not (args.state_dir or args.postgres_dsn):
         parser.error(
-            "--fleet-state-dir requires --state-dir for durable execution identity"
+            "--fleet-state-dir requires --state-dir or --postgres-dsn for durable execution identity"
         )
     if args.fleet_state_dir and not fleet_token:
         parser.error("--fleet-state-dir requires LOOM_FLEET_TOKEN to be set")
@@ -690,9 +703,23 @@ def main() -> None:
         else NoOpWorker()
     )
     arbiter = Arbiter([worker], evaluate, max_retries=0)
-    execution_store = (
-        FileExecutionStateStore(args.state_dir) if args.state_dir else None
-    )
+    postgres_store = None
+    if args.state_dir:
+        execution_store = FileExecutionStateStore(args.state_dir)
+    elif args.postgres_dsn:
+        postgres_store = PostgresExecutionStateStore.connect(
+            args.postgres_dsn,
+            schema=args.postgres_schema,
+        )
+        try:
+            postgres_store.initialize()
+        except Exception:
+            postgres_store.close()
+            raise
+        execution_store = postgres_store
+    else:
+        execution_store = None
+
     fleet_server = None
     fleet_thread = None
     if fleet_coordinator is not None:
@@ -717,6 +744,8 @@ def main() -> None:
             fleet_server.close()
         if fleet_thread is not None:
             fleet_thread.join(timeout=2)
+        if postgres_store is not None:
+            postgres_store.close()
 
 
 if __name__ == "__main__":
