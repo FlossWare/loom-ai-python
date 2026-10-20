@@ -68,19 +68,36 @@ capabilities rather than becoming implicit responsibilities of this repository.
 
 ## Running the HTTP boundary
 
-Install the package, then start the reference HTTP server with an explicit state
-directory when execution observation must survive process restarts:
+Install the package, then choose one durable execution-state backend.
+
+Filesystem snapshots:
 
 ```sh
 loom-server --host 127.0.0.1 --port 8000 \
   --state-dir "$HOME/.local/state/flossware-loom/executions"
 ```
 
-The state directory contains durable execution snapshots. Keep it on storage
-that survives server restarts and restrict filesystem permissions to the service
-identity. Omitting `--state-dir` deliberately disables durable observation and
-continuation; the server will still respond to `/health` and accept ephemeral
-smoke-test submissions.
+PostgreSQL JSONB snapshots:
+
+```sh
+pip install -e '.[postgres]'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5432/loom'
+loom-server --host 127.0.0.1 --port 8000 --postgres-schema loom_runtime
+```
+
+The PostgreSQL adapter creates a dedicated `loom_runtime.execution_states`
+table. It persists the complete versioned execution envelope, including intent,
+state, result, evidence, evaluations, metadata, and provenance. The execution ID
+is a primary key; create-only submissions cannot silently overwrite an existing
+identity. The database DSN is read from the environment or can be supplied with
+`--postgres-dsn`. Use a least-privilege database role and a secret manager or
+service environment rather than putting credentials in shell history or source.
+
+Use either `--state-dir` or `--postgres-dsn`, not both. Omitting both deliberately
+disables durable observation and continuation; the server will still respond to
+`/health` and accept ephemeral smoke-test submissions. The database backend
+shares the existing `ExecutionStateStore` port with the filesystem adapter, so
+Orchestrator lifecycle logic does not depend on the backend.
 
 **Important limitation:** without fleet configuration, the CLI's built-in Worker is
 a no-op transport smoke Worker. To route ordinary REST Intent submissions through
@@ -91,7 +108,7 @@ fleet bearer token:
 export LOOM_FLEET_TOKEN='replace-with-a-long-random-token'
 loom-server \
   --host 127.0.0.1 --port 8000 \
-  --state-dir "$HOME/.local/state/flossware-loom/executions" \
+  --postgres-schema loom_runtime \
   --fleet-state-dir "$HOME/.local/state/flossware-loom/fleet" \
   --fleet-host 127.0.0.1 --fleet-port 8001
 ```
