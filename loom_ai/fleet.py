@@ -717,13 +717,14 @@ class FleetCoordinator:
                 worker_id=worker.worker_id,
                 status=WorkerStatus.FAILED,
                 error="worker invocation failed",
+                error_code="worker_invocation_failed",
+                retryable=True,
                 evidence=(
                     {
                         "type": "worker-exception",
                         "exception_type": type(exc).__name__,
                     },
                 ),
-                metadata={"retryable": True},
             )
         return self.submit_result(
             task_id,
@@ -731,7 +732,7 @@ class FleetCoordinator:
             lease_id=lease.lease_id,
             generation=lease.generation,
             result=result,
-            retryable=result.metadata.get("retryable") is True,
+            retryable=result.retryable,
         )
 
     def expire_leases(self) -> tuple[FleetTask, ...]:
