@@ -492,3 +492,50 @@ def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(tmp_pa
         "event_ids": ["event-1"],
         "attributes": {"region": "test"},
     }
+
+
+
+@pytest.mark.parametrize(
+    ("worker_status", "outcome", "expected_status"),
+    [
+        (WorkerStatus.FAILED, WorkerOutcome.POLICY_DENIED, FleetTaskStatus.FAILED),
+        (WorkerStatus.FAILED, WorkerOutcome.DEADLINE_EXCEEDED, FleetTaskStatus.FAILED),
+        (WorkerStatus.CANCELLED, WorkerOutcome.CANCELLED, FleetTaskStatus.CANCELLED),
+    ],
+)
+def test_fleet_never_retries_canonical_terminal_outcomes(
+    worker_status: WorkerStatus,
+    outcome: WorkerOutcome,
+    expected_status: FleetTaskStatus,
+) -> None:
+    coordinator, _ = setup_coordinator()
+    coordinator.register_worker("worker-a", "impl-a", ["operation.run"])
+    coordinator.submit_task(
+        Intent(goal="terminal outcome", intent_id=f"intent-{outcome.value}"),
+        execution_id=f"execution-{outcome.value}",
+        task_id=f"task-{outcome.value}",
+        required_capabilities=["operation.run"],
+        max_attempts=3,
+    )
+    leased = coordinator.claim_task("worker-a")
+    assert leased is not None and leased.lease is not None
+    result = WorkerResult(
+        worker_id="worker-a",
+        status=worker_status,
+        outcome=outcome,
+        error="terminal result",
+        retryable=True,
+    )
+
+    task = coordinator.submit_result(
+        leased.task_id,
+        worker_id="worker-a",
+        lease_id=leased.lease.lease_id,
+        generation=leased.lease.generation,
+        result=result,
+        retryable=True,
+    )
+
+    assert task.status is expected_status
+    assert task.result == result
+    assert task.lease is None
