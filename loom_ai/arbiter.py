@@ -134,6 +134,17 @@ class Arbiter:
                 return self._result(
                     outputs, evidence, "policy_denied", result.error or "policy denied"
                 )
+            if (
+                result.outcome is WorkerOutcome.FAILED
+                and result.metadata.get("termination_cause") == "interrupted"
+            ):
+                return self._result(
+                    outputs,
+                    evidence,
+                    "interrupted",
+                    result.error or "nested execution interrupted before completion",
+                    termination_cause="interrupted",
+                )
             if result.outcome is WorkerOutcome.PARTIALLY_SUCCEEDED:
                 return self._result(
                     outputs,
