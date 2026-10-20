@@ -17,6 +17,7 @@ from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 
+
 class FakeClock:
     def __init__(self) -> None:
         self.current = datetime(2030, 1, 1, tzinfo=timezone.utc)
