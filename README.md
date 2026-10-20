@@ -110,12 +110,14 @@ and run this against a disposable database:
 
 ```sh
 pip install -e '.[postgres,dev]'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5433/loom'
+export FLOSSWARE_LOOM_FLEET_POSTGRES_DSN="$FLOSSWARE_LOOM_POSTGRES_DSN"
 bash scripts/test-postgres-recovery.sh
 ```
 
-The live test creates and reloads a uniquely named execution record, then removes
-it. CI skips this live check unless `FLOSSWARE_LOOM_POSTGRES_DSN` is configured;
-a green unit-test run is not evidence that the deployed database is reachable.
+The live tests create, reload, update, and remove uniquely named execution and
+fleet snapshots. CI skips these checks unless both DSNs are configured; a green
+unit-test run is not evidence that the deployed database is reachable.
 
 **Important limitation:** without fleet configuration, the CLI's built-in Worker is
 a no-op transport smoke Worker. To route ordinary REST Intent submissions through
