@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.fleet import (
     FleetConflictError,
     FleetCoordinator,
@@ -14,7 +15,7 @@ from loom_ai.fleet import (
     WorkerNotRegisteredError,
 )
 from loom_ai.intent import Intent
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 
 
 class FakeClock:
@@ -436,3 +437,58 @@ def test_cancel_running_task_fences_late_worker_result() -> None:
     assert late.status is FleetTaskStatus.CANCELLED
     assert late.result is not None
     assert late.result.status is WorkerStatus.CANCELLED
+
+
+
+def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(tmp_path) -> None:
+    store = FileFleetStateStore(tmp_path / "fleet-state")
+    coordinator = FleetCoordinator(state_store=store)
+    coordinator.register_worker("worker-a", "impl-a", ["search.read"])
+    coordinator.submit_task(
+        Intent(goal="preserve result contract", intent_id="intent-contract"),
+        execution_id="execution-contract",
+        task_id="task-contract",
+        required_capabilities=["search.read"],
+    )
+    lease_task = coordinator.claim_task("worker-a")
+    assert lease_task is not None and lease_task.lease is not None
+    result = WorkerResult(
+        worker_id="worker-a",
+        status=WorkerStatus.FAILED,
+        outcome=WorkerOutcome.FAILED,
+        error="remote failure",
+        error_code="remote_unavailable",
+        retryable=True,
+        artifacts=({"artifact_id": "artifact-1"},),
+        observations=({"kind": "health", "value": "degraded"},),
+        provenance={
+            "implementation_id": "impl-a",
+            "event_ids": ["event-1"],
+            "attributes": {"region": "test"},
+        },
+    )
+    completed = coordinator.submit_result(
+        "task-contract",
+        worker_id="worker-a",
+        lease_id=lease_task.lease.lease_id,
+        generation=lease_task.lease.generation,
+        result=result,
+    )
+    assert completed.status is FleetTaskStatus.FAILED
+
+    restored = FleetCoordinator(state_store=store)
+    restored_task = restored.observe_task("task-contract")
+
+    assert restored_task.result is not None
+    assert restored_task.result.outcome is WorkerOutcome.FAILED
+    assert restored_task.result.error_code == "remote_unavailable"
+    assert restored_task.result.retryable is True
+    assert restored_task.result.artifacts == ({"artifact_id": "artifact-1"},)
+    assert restored_task.result.observations == (
+        {"kind": "health", "value": "degraded"},
+    )
+    assert restored_task.result.provenance == {
+        "implementation_id": "impl-a",
+        "event_ids": ["event-1"],
+        "attributes": {"region": "test"},
+    }
