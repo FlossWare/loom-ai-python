@@ -84,9 +84,7 @@ def test_server_executes_intent_over_http() -> None:
         assert payload["result"]["outcome"] == "succeeded"
         assert payload["result"]["error_code"] == ""
         assert payload["result"]["retryable"] is False
-        assert payload["result"]["artifacts"] == [
-            {"artifact_id": "http-artifact"}
-        ]
+        assert payload["result"]["artifacts"] == [{"artifact_id": "http-artifact"}]
         assert payload["result"]["observations"] == [
             {"kind": "http", "value": "observed"}
         ]
