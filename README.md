@@ -97,9 +97,12 @@ Use either `--state-dir` or `--postgres-dsn`, not both. Omitting both deliberate
 disables durable observation and continuation; the server will still respond to
 `/health` and accept ephemeral smoke-test submissions. The database backend
 shares the existing `ExecutionStateStore` port with the filesystem adapter, so
-Orchestrator lifecycle logic does not depend on the backend. The fleet
-coordinator snapshot adapter remains filesystem-backed in this change; it is a
-separate port and must not be mistaken for PostgreSQL fleet persistence.
+Orchestrator lifecycle logic does not depend on the backend. Fleet snapshots
+have their own `FleetStateStore` port and can independently use PostgreSQL
+through `--fleet-postgres-dsn` or `FLOSSWARE_LOOM_FLEET_POSTGRES_DSN`. The two
+tables are `loom_runtime.execution_states` and `loom_runtime.fleet_states`;
+they persist distinct lifecycle boundaries and are not one cross-table
+transaction.
 
 The unit tests use a fake connection and run in the normal quality gate. For a
 live process-independent database acceptance test, install the optional driver
@@ -130,9 +133,23 @@ loom-server \
 
 The server submits each `POST /intents` execution through a FleetDispatchWorker,
 which creates a correlated task in the coordinator and waits for a remote Worker
-result. Workers register with the same token and advertise the `loom.execute`
-capability. Install the package in the Worker environment and run the independent
-process with a module/attribute reference to a Worker instance or class:
+result. For PostgreSQL-backed execution and fleet recovery, install the optional
+driver and configure both state stores:
+
+```sh
+pip install -e '.[postgres]'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5433/loom'
+export FLOSSWARE_LOOM_FLEET_POSTGRES_DSN="$FLOSSWARE_LOOM_POSTGRES_DSN"
+export LOOM_FLEET_TOKEN='replace-with-a-long-random-token'
+loom-server --host 127.0.0.1 --port 8000 --fleet-host 127.0.0.1 --fleet-port 8001
+```
+
+The fleet store defaults to the separate `FLOSSWARE_LOOM_FLEET_POSTGRES_DSN`
+variable so filesystem and database choices remain explicit. Both database
+tables are created idempotently in the configured schema. Workers register with
+the same token and advertise the `loom.execute` capability. Install the package
+in the Worker environment and run the independent process with a module/attribute
+reference to a Worker instance or class:
 
 ```sh
 export LOOM_FLEET_TOKEN='the-same-long-random-token'
