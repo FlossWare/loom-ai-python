@@ -21,7 +21,7 @@ from loom_ai.orchestrator import (
     OrchestratorSubmission,
 )
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 from scripts.loom_mcp_server import LoomHTTPClient
 
 
