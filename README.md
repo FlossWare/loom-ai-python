@@ -68,19 +68,56 @@ capabilities rather than becoming implicit responsibilities of this repository.
 
 ## Running the HTTP boundary
 
-Install the package, then start the reference HTTP server with an explicit state
-directory when execution observation must survive process restarts:
+Install the package, then choose one durable execution-state backend.
+
+Filesystem snapshots:
 
 ```sh
 loom-server --host 127.0.0.1 --port 8000 \
   --state-dir "$HOME/.local/state/flossware-loom/executions"
 ```
 
-The state directory contains durable execution snapshots. Keep it on storage
-that survives server restarts and restrict filesystem permissions to the service
-identity. Omitting `--state-dir` deliberately disables durable observation and
-continuation; the server will still respond to `/health` and accept ephemeral
-smoke-test submissions.
+PostgreSQL JSONB snapshots:
+
+```sh
+pip install -e '.[postgres]'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5433/loom'
+loom-server --host 127.0.0.1 --port 8000 --postgres-schema loom_runtime
+```
+
+The PostgreSQL adapter creates a dedicated `loom_runtime.execution_states`
+table. It persists the complete versioned execution envelope, including intent,
+state, result, evidence, evaluations, metadata, and provenance. The execution ID
+is a primary key; create-only submissions cannot silently overwrite an existing
+identity. The database DSN is read from the environment or can be supplied with
+`--postgres-dsn`. Use a least-privilege database role and a secret manager or
+service environment rather than putting credentials in shell history or source.
+
+Use either `--state-dir` or `--postgres-dsn`, not both. Omitting both deliberately
+disables durable observation and continuation; the server will still respond to
+`/health` and accept ephemeral smoke-test submissions. The database backend
+shares the existing `ExecutionStateStore` port with the filesystem adapter, so
+Orchestrator lifecycle logic does not depend on the backend. Fleet snapshots
+have their own `FleetStateStore` port and can independently use PostgreSQL
+through `--fleet-postgres-dsn` or `FLOSSWARE_LOOM_FLEET_POSTGRES_DSN`. The two
+tables are `loom_runtime.execution_states` and `loom_runtime.fleet_states`;
+they persist distinct lifecycle boundaries and are not one cross-table
+transaction.
+
+The unit tests use a fake connection and run in the normal quality gate. For a
+live process-independent database acceptance test, install the optional driver
+and run this against a disposable database:
+
+```sh
+pip install -e '.[postgres,dev]'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5433/loom'
+export FLOSSWARE_LOOM_FLEET_POSTGRES_DSN="$FLOSSWARE_LOOM_POSTGRES_DSN"
+bash scripts/test-postgres-recovery.sh
+```
+
+The live tests create, reload, update, and remove uniquely named execution and
+fleet snapshots. CI skips these checks unless both DSNs are configured; a green
+unit-test run is not evidence that the deployed database is reachable.
 
 **Important limitation:** without fleet configuration, the CLI's built-in Worker is
 a no-op transport smoke Worker. To route ordinary REST Intent submissions through
@@ -91,16 +128,30 @@ fleet bearer token:
 export LOOM_FLEET_TOKEN='replace-with-a-long-random-token'
 loom-server \
   --host 127.0.0.1 --port 8000 \
-  --state-dir "$HOME/.local/state/flossware-loom/executions" \
+  --postgres-schema loom_runtime \
   --fleet-state-dir "$HOME/.local/state/flossware-loom/fleet" \
   --fleet-host 127.0.0.1 --fleet-port 8001
 ```
 
 The server submits each `POST /intents` execution through a FleetDispatchWorker,
 which creates a correlated task in the coordinator and waits for a remote Worker
-result. Workers register with the same token and advertise the `loom.execute`
-capability. Install the package in the Worker environment and run the independent
-process with a module/attribute reference to a Worker instance or class:
+result. For PostgreSQL-backed execution and fleet recovery, install the optional
+driver and configure both state stores:
+
+```sh
+pip install -e '.[postgres]'
+export FLOSSWARE_LOOM_POSTGRES_DSN='postgresql://loom_user@db-host:5433/loom'
+export FLOSSWARE_LOOM_FLEET_POSTGRES_DSN="$FLOSSWARE_LOOM_POSTGRES_DSN"
+export LOOM_FLEET_TOKEN='replace-with-a-long-random-token'
+loom-server --host 127.0.0.1 --port 8000 --fleet-host 127.0.0.1 --fleet-port 8001
+```
+
+The fleet store defaults to the separate `FLOSSWARE_LOOM_FLEET_POSTGRES_DSN`
+variable so filesystem and database choices remain explicit. Both database
+tables are created idempotently in the configured schema. Workers register with
+the same token and advertise the `loom.execute` capability. Install the package
+in the Worker environment and run the independent process with a module/attribute
+reference to a Worker instance or class:
 
 ```sh
 export LOOM_FLEET_TOKEN='the-same-long-random-token'

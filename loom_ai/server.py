@@ -38,6 +38,8 @@ from loom_ai.orchestrator import (
     Orchestrator,
     parse_deadline,
 )
+from loom_ai.postgres_execution_state import PostgresExecutionStateStore
+from loom_ai.postgres_fleet_state import PostgresFleetStateStore
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
 MAX_PAYLOAD_BYTES = 10 * 1024 * 1024
@@ -635,24 +637,64 @@ def main() -> None:
         "--fleet-state-dir",
         help="directory for durable distributed fleet task snapshots",
     )
+    parser.add_argument(
+        "--fleet-postgres-dsn",
+        help=(
+            "PostgreSQL DSN for fleet snapshots (defaults to "
+            "FLOSSWARE_LOOM_FLEET_POSTGRES_DSN unless --fleet-state-dir is set)"
+        ),
+    )
+    parser.add_argument(
+        "--fleet-postgres-schema",
+        default="loom_runtime",
+        help="schema for PostgreSQL fleet snapshots (default: loom_runtime)",
+    )
     parser.add_argument("--fleet-host", default="127.0.0.1")
     parser.add_argument("--fleet-port", type=int, default=8001)
     parser.add_argument("--fleet-wait-timeout", type=float, default=900)
     parser.add_argument(
         "--state-dir",
         help=(
-            "directory for durable execution snapshots; without this option, "
-            "execution observation and continuation are unavailable"
+            "directory for durable execution snapshots; without this option or "
+            "--postgres-dsn, execution observation and continuation are unavailable"
         ),
     )
+    parser.add_argument(
+        "--postgres-dsn",
+        help=(
+            "PostgreSQL DSN for durable execution state (defaults to "
+            "FLOSSWARE_LOOM_POSTGRES_DSN unless --state-dir is set)"
+        ),
+    )
+    parser.add_argument(
+        "--postgres-schema",
+        default="loom_runtime",
+        help="schema for Loom runtime state (default: loom_runtime)",
+    )
     args = parser.parse_args()
-    fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
-    if args.fleet_state_dir and not args.state_dir:
+    if args.state_dir and args.postgres_dsn:
+        parser.error("choose either --state-dir or --postgres-dsn, not both")
+    postgres_dsn = args.postgres_dsn or (
+        os.environ.get("FLOSSWARE_LOOM_POSTGRES_DSN") if not args.state_dir else None
+    )
+    if args.fleet_state_dir and args.fleet_postgres_dsn:
         parser.error(
-            "--fleet-state-dir requires --state-dir for durable execution identity"
+            "choose either --fleet-state-dir or --fleet-postgres-dsn, not both"
         )
-    if args.fleet_state_dir and not fleet_token:
-        parser.error("--fleet-state-dir requires LOOM_FLEET_TOKEN to be set")
+    fleet_postgres_dsn = args.fleet_postgres_dsn or (
+        os.environ.get("FLOSSWARE_LOOM_FLEET_POSTGRES_DSN")
+        if not args.fleet_state_dir
+        else None
+    )
+    fleet_token = os.environ.get("LOOM_FLEET_TOKEN")
+    fleet_enabled = bool(args.fleet_state_dir or fleet_postgres_dsn)
+    if fleet_enabled and not (args.state_dir or postgres_dsn):
+        parser.error(
+            "fleet persistence requires --state-dir or --postgres-dsn "
+            "for durable execution identity"
+        )
+    if fleet_enabled and not fleet_token:
+        parser.error("fleet persistence requires LOOM_FLEET_TOKEN to be set")
     if args.fleet_wait_timeout <= 0:
         parser.error("--fleet-wait-timeout must be positive")
 
@@ -675,37 +717,62 @@ def main() -> None:
             ArbiterDecision.REPLAN, reason=result.error or "worker failed"
         )
 
-    fleet_coordinator = (
-        FleetCoordinator(state_store=FileFleetStateStore(args.fleet_state_dir))
-        if args.fleet_state_dir
-        else None
-    )
-    worker = (
-        FleetDispatchWorker(
-            fleet_coordinator,
-            required_capabilities=["loom.execute"],
-            wait_timeout_seconds=args.fleet_wait_timeout,
-        )
-        if fleet_coordinator is not None
-        else NoOpWorker()
-    )
-    arbiter = Arbiter([worker], evaluate, max_retries=0)
-    execution_store = (
-        FileExecutionStateStore(args.state_dir) if args.state_dir else None
-    )
+    postgres_store = None
+    fleet_postgres_store = None
     fleet_server = None
     fleet_thread = None
-    if fleet_coordinator is not None:
-        fleet_server = FleetHTTPServer(
-            fleet_coordinator,
-            bearer_token=fleet_token,
-            host=args.fleet_host,
-            port=args.fleet_port,
-        )
-        fleet_httpd = fleet_server.start()
-        fleet_thread = Thread(target=fleet_httpd.serve_forever, daemon=True)
-        fleet_thread.start()
     try:
+        if args.state_dir:
+            execution_store = FileExecutionStateStore(args.state_dir)
+        elif postgres_dsn:
+            postgres_store = PostgresExecutionStateStore.connect(
+                postgres_dsn,
+                schema=args.postgres_schema,
+            )
+            postgres_store.initialize()
+            execution_store = postgres_store
+        else:
+            execution_store = None
+
+        if args.fleet_state_dir:
+            fleet_state_store = FileFleetStateStore(args.fleet_state_dir)
+        elif fleet_postgres_dsn:
+            fleet_postgres_store = PostgresFleetStateStore.connect(
+                fleet_postgres_dsn,
+                schema=args.fleet_postgres_schema,
+            )
+            fleet_postgres_store.initialize()
+            fleet_state_store = fleet_postgres_store
+        else:
+            fleet_state_store = None
+
+        fleet_coordinator = (
+            FleetCoordinator(state_store=fleet_state_store)
+            if fleet_state_store is not None
+            else None
+        )
+        worker = (
+            FleetDispatchWorker(
+                fleet_coordinator,
+                required_capabilities=["loom.execute"],
+                wait_timeout_seconds=args.fleet_wait_timeout,
+            )
+            if fleet_coordinator is not None
+            else NoOpWorker()
+        )
+        arbiter = Arbiter([worker], evaluate, max_retries=0)
+
+        if fleet_coordinator is not None:
+            fleet_server = FleetHTTPServer(
+                fleet_coordinator,
+                bearer_token=fleet_token,
+                host=args.fleet_host,
+                port=args.fleet_port,
+            )
+            fleet_httpd = fleet_server.start()
+            fleet_thread = Thread(target=fleet_httpd.serve_forever, daemon=True)
+            fleet_thread.start()
+
         LoomServer(
             arbiter,
             host=args.host,
@@ -717,6 +784,10 @@ def main() -> None:
             fleet_server.close()
         if fleet_thread is not None:
             fleet_thread.join(timeout=2)
+        if postgres_store is not None:
+            postgres_store.close()
+        if fleet_postgres_store is not None:
+            fleet_postgres_store.close()
 
 
 if __name__ == "__main__":
