@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 
 
 class _TestServer(socketserver.ThreadingTCPServer):
@@ -33,6 +33,14 @@ class RecordingWorker:
                 "provenance": context.intent.provenance,
             },
             evidence=({"source": self.worker_id},),
+            outcome=WorkerOutcome.SUCCEEDED,
+            artifacts=({"artifact_id": "http-artifact"},),
+            observations=({"kind": "http", "value": "observed"},),
+            provenance={
+                "implementation_id": "recording",
+                "event_ids": ["http-event"],
+                "attributes": {"source": "server-test"},
+            },
         )
 
 
@@ -72,6 +80,17 @@ def test_server_executes_intent_over_http() -> None:
             payload = json.load(response)
 
         assert payload["status"] == "success"
+        assert payload["outcome"] == "succeeded"
+        assert payload["result"]["outcome"] == "succeeded"
+        assert payload["result"]["error_code"] == ""
+        assert payload["result"]["retryable"] is False
+        assert payload["result"]["artifacts"] == [
+            {"artifact_id": "http-artifact"}
+        ]
+        assert payload["result"]["observations"] == [
+            {"kind": "http", "value": "observed"}
+        ]
+        assert payload["result"]["provenance"]["event_ids"] == ["http-event"]
         assert payload["output"][0]["output"] == {
             "goal": "exercise Loom",
             "provenance": {"source": "stage3-test"},
@@ -207,6 +226,8 @@ def test_server_persists_and_continues_execution_state() -> None:
             execution_id = initial["execution_id"]
             assert initial["status"] == "failed"
             assert initial["lifecycle"] == "interrupted"
+            assert initial["outcome"] == "failed"
+            assert initial["result"]["outcome"] == "failed"
 
             with urlopen(f"{base_url}/executions/{execution_id}") as response:
                 persisted = json.load(response)
@@ -215,6 +236,13 @@ def test_server_persists_and_continues_execution_state() -> None:
             assert persisted["intent_id"]
             assert persisted["status"] == "failed"
             assert persisted["lifecycle"] == "interrupted"
+            assert persisted["outcome"] == "failed"
+            assert persisted["result"]["outcome"] == "failed"
+            assert persisted["result"]["error_code"] == "execution_interrupted"
+            assert persisted["result"]["artifacts"] == [
+                {"artifact_id": "http-artifact"}
+            ]
+            assert persisted["result"]["provenance"]["event_ids"] == ["http-event"]
             assert any(
                 item.get("phase") == "initial"
                 for item in persisted["evidence"]
@@ -232,6 +260,8 @@ def test_server_persists_and_continues_execution_state() -> None:
 
             assert continued["execution_id"] == execution_id
             assert continued["status"] == "success"
+            assert continued["outcome"] == "succeeded"
+            assert continued["result"]["outcome"] == "succeeded"
 
             with urlopen(f"{base_url}/executions/{execution_id}") as response:
                 final = json.load(response)
