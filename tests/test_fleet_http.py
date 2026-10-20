@@ -12,7 +12,6 @@ from loom_ai.fleet_http import FleetHTTPServer, FleetWorkerAgent
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
 
-
 class RecordingWorker:
     def __init__(self, worker_id: str, output: str) -> None:
         self._worker_id = worker_id
@@ -32,7 +31,6 @@ class RecordingWorker:
             evidence=({"type": "worker.completed"},),
         )
 
-
 def start_server():
     coordinator = FleetCoordinator()
     server = FleetHTTPServer(coordinator, bearer_token="test-token", port=0)
@@ -40,7 +38,6 @@ def start_server():
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     return coordinator, server, thread, f"http://127.0.0.1:{server.port}"
-
 
 def post_json(base_url: str, path: str, payload: dict, token: str = "test-token"):
     request = Request(
@@ -55,12 +52,10 @@ def post_json(base_url: str, path: str, payload: dict, token: str = "test-token"
     with urlopen(request, timeout=3) as response:
         return json.loads(response.read().decode("utf-8"))
 
-
 def get_json(base_url: str, path: str, token: str = "test-token"):
     request = Request(base_url + path, headers={"Authorization": f"Bearer {token}"})
     with urlopen(request, timeout=3) as response:
         return json.loads(response.read().decode("utf-8"))
-
 
 def test_two_independent_http_agents_claim_and_execute_matching_tasks() -> None:
     coordinator, server, thread, base_url = start_server()
@@ -108,7 +103,6 @@ def test_two_independent_http_agents_claim_and_execute_matching_tasks() -> None:
         server.close()
         thread.join(timeout=2)
 
-
 def test_fleet_http_requires_bearer_authentication() -> None:
     _coordinator, server, thread, base_url = start_server()
     try:
@@ -131,7 +125,6 @@ def test_fleet_http_requires_bearer_authentication() -> None:
         server.close()
         thread.join(timeout=2)
 
-
 def test_agent_rejects_non_http_base_url() -> None:
     with pytest.raises(ValueError, match="HTTP"):
         FleetWorkerAgent(
@@ -141,7 +134,6 @@ def test_agent_rejects_non_http_base_url() -> None:
             implementation_id="impl-a",
             capabilities=["cap.a"],
         )
-
 
 def test_http_server_rejects_non_json_result_before_commit() -> None:
     coordinator, server, thread, base_url = start_server()
@@ -185,7 +177,6 @@ def test_http_server_rejects_non_json_result_before_commit() -> None:
         server.close()
         thread.join(timeout=2)
 
-
 def test_worker_http_cannot_submit_tasks_around_orchestrator() -> None:
     _coordinator, server, thread, base_url = start_server()
     try:
@@ -206,7 +197,6 @@ def test_worker_http_cannot_submit_tasks_around_orchestrator() -> None:
     finally:
         server.close()
         thread.join(timeout=2)
-
 
 def test_http_rejects_conflicting_retryability_fields() -> None:
     coordinator, server, thread, base_url = start_server()
