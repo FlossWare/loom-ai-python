@@ -21,7 +21,7 @@ from loom_ai.orchestrator import (
     OrchestratorSubmission,
 )
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 from scripts.loom_mcp_server import LoomHTTPClient
 
 
@@ -569,6 +569,12 @@ def test_active_cancellation_is_pending_until_worker_returns(tmp_path) -> None:
             return WorkerResult(
                 worker_id=self.worker_id,
                 status=WorkerStatus.SUCCESS,
+                artifacts=({"artifact_id": "cancel-artifact"},),
+                observations=({"kind": "cancellation", "value": "pending"},),
+                provenance={
+                    "implementation_id": "blocking",
+                    "event_ids": ["cancel-event"],
+                },
             )
 
     orchestrator = Orchestrator(
@@ -607,6 +613,15 @@ def test_active_cancellation_is_pending_until_worker_returns(tmp_path) -> None:
         assert not thread.is_alive()
         assert failures == []
         assert submissions[0].result.status is WorkerStatus.CANCELLED
+        assert submissions[0].result.outcome is WorkerOutcome.CANCELLED
+        assert submissions[0].result.artifacts == ({"artifact_id": "cancel-artifact"},)
+        assert submissions[0].result.observations == (
+            {"kind": "cancellation", "value": "pending"},
+        )
+        assert submissions[0].result.provenance["event_ids"] == ["cancel-event"]
+        assert submissions[0].result.provenance["attributes"]["contributors"][0][
+            "provenance"
+        ]["event_ids"] == ["cancel-event"]
 
         state = orchestrator.observe("active-execution")
         assert state.status == "cancelled"

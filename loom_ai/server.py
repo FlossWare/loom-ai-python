@@ -568,6 +568,11 @@ def _execution_payload(execution: ExecutionState) -> dict[str, Any]:
         "intent_id": execution.intent.intent_id,
         "status": execution.status,
         "lifecycle": execution.lifecycle,
+        "outcome": (
+            execution.result.get("outcome")
+            if isinstance(execution.result, dict)
+            else None
+        ),
         "evaluation": execution.evaluation.to_dict(),
         "evaluations": [item.to_dict() for item in execution.evaluations],
         "state": execution.state,
@@ -583,9 +588,15 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
     structured_result = {
         "worker_id": result.worker_id,
         "status": result.status.value,
+        "outcome": result.outcome.value,
         "output": result.output,
         "evidence": result.evidence,
         "error": result.error,
+        "error_code": result.error_code,
+        "retryable": result.retryable,
+        "artifacts": result.artifacts,
+        "observations": result.observations,
+        "provenance": result.provenance,
         "metadata": result.metadata,
     }
     lifecycle = (
