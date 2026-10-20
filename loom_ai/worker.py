@@ -178,12 +178,16 @@ class WorkerResult:
             raise ValueError(
                 f"outcome {outcome.value!r} contradicts status {self.status.value!r}"
             )
-        if outcome in {
-            WorkerOutcome.FAILED,
-            WorkerOutcome.POLICY_DENIED,
-            WorkerOutcome.CANCELLED,
-            WorkerOutcome.DEADLINE_EXCEEDED,
-        } and not self.error_code:
+        if (
+            outcome
+            in {
+                WorkerOutcome.FAILED,
+                WorkerOutcome.POLICY_DENIED,
+                WorkerOutcome.CANCELLED,
+                WorkerOutcome.DEADLINE_EXCEEDED,
+            }
+            and not self.error_code
+        ):
             category = {
                 WorkerOutcome.FAILED: "execution_failed",
                 WorkerOutcome.POLICY_DENIED: "policy_denied",
