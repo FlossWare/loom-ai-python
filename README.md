@@ -97,7 +97,22 @@ Use either `--state-dir` or `--postgres-dsn`, not both. Omitting both deliberate
 disables durable observation and continuation; the server will still respond to
 `/health` and accept ephemeral smoke-test submissions. The database backend
 shares the existing `ExecutionStateStore` port with the filesystem adapter, so
-Orchestrator lifecycle logic does not depend on the backend.
+Orchestrator lifecycle logic does not depend on the backend. The fleet
+coordinator snapshot adapter remains filesystem-backed in this change; it is a
+separate port and must not be mistaken for PostgreSQL fleet persistence.
+
+The unit tests use a fake connection and run in the normal quality gate. For a
+live process-independent database acceptance test, install the optional driver
+and run this against a disposable database:
+
+```sh
+pip install -e '.[postgres,dev]'
+bash scripts/test-postgres-recovery.sh
+```
+
+The live test creates and reloads a uniquely named execution record, then removes
+it. CI skips this live check unless `FLOSSWARE_LOOM_POSTGRES_DSN` is configured;
+a green unit-test run is not evidence that the deployed database is reachable.
 
 **Important limitation:** without fleet configuration, the CLI's built-in Worker is
 a no-op transport smoke Worker. To route ordinary REST Intent submissions through
