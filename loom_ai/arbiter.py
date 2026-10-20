@@ -150,7 +150,10 @@ class Arbiter:
                     outputs,
                     evidence,
                     "partial",
-                    str(result.metadata.get("reason") or "nested Arbiter partially succeeded"),
+                    str(
+                        result.metadata.get("reason")
+                        or "nested Arbiter partially succeeded"
+                    ),
                 )
 
             evaluation = self.evaluator(result, child_context)
