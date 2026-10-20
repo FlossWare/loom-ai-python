@@ -353,7 +353,13 @@ def test_server_cli_can_enable_postgres_execution_state(monkeypatch) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["loom-server", "--postgres-dsn", "postgresql://test", "--postgres-schema", "test_runtime"],
+        [
+            "loom-server",
+            "--postgres-dsn",
+            "postgresql://test",
+            "--postgres-schema",
+            "test_runtime",
+        ],
     )
 
     server_module.main()
