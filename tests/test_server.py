@@ -344,9 +344,7 @@ def test_server_cli_can_enable_postgres_execution_state(monkeypatch) -> None:
         captured["durable"] = server.orchestrator.durable_enabled
         captured["store"] = server.execution_store
 
-    monkeypatch.setattr(
-        server_module.PostgresExecutionStateStore, "connect", connect
-    )
+    monkeypatch.setattr(server_module.PostgresExecutionStateStore, "connect", connect)
     monkeypatch.setattr(
         server_module.LoomServer, "serve_forever", stop_after_configuration
     )
@@ -393,9 +391,7 @@ def test_server_cli_uses_postgres_environment_when_no_state_dir(monkeypatch) -> 
     monkeypatch.setattr(
         server_module.PostgresExecutionStateStore, "connect", connect
     )
-    monkeypatch.setattr(
-        server_module.LoomServer, "serve_forever", lambda _server: None
-    )
+    monkeypatch.setattr(server_module.LoomServer, "serve_forever", lambda _server: None)
     monkeypatch.setenv("FLOSSWARE_LOOM_POSTGRES_DSN", "postgresql://environment")
     monkeypatch.setattr(sys, "argv", ["loom-server"])
 
