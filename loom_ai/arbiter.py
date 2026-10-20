@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Iterable
 
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    Worker,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 
 class ArbiterDecision(str, Enum):
@@ -114,14 +120,40 @@ class Arbiter:
                     "deadline exceeded",
                     termination_cause="deadline_exceeded",
                 )
-            if result.status is WorkerStatus.CANCELLED:
+            if result.outcome is WorkerOutcome.CANCELLED:
                 return self._result(outputs, evidence, "cancelled")
-            if result.metadata.get("continuation_pending") is True:
+            if result.outcome is WorkerOutcome.DEADLINE_EXCEEDED:
+                return self._result(
+                    outputs,
+                    evidence,
+                    "failed",
+                    result.error or "deadline exceeded",
+                    termination_cause="deadline_exceeded",
+                )
+            if result.outcome is WorkerOutcome.POLICY_DENIED:
+                return self._result(
+                    outputs, evidence, "policy_denied", result.error or "policy denied"
+                )
+            if (
+                result.outcome is WorkerOutcome.FAILED
+                and result.metadata.get("termination_cause") == "interrupted"
+            ):
                 return self._result(
                     outputs,
                     evidence,
                     "interrupted",
-                    str(result.metadata.get("reason") or "nested Arbiter interrupted"),
+                    result.error or "nested execution interrupted before completion",
+                    termination_cause="interrupted",
+                )
+            if result.outcome is WorkerOutcome.PARTIALLY_SUCCEEDED:
+                return self._result(
+                    outputs,
+                    evidence,
+                    "partial",
+                    str(
+                        result.metadata.get("reason")
+                        or "nested Arbiter partially succeeded"
+                    ),
                 )
 
             evaluation = self.evaluator(result, child_context)
@@ -129,9 +161,38 @@ class Arbiter:
                 return self._result(outputs, evidence, "complete", evaluation.reason)
 
             if evaluation.decision is ArbiterDecision.INTERRUPT:
-                return self._result(outputs, evidence, "interrupted", evaluation.reason)
+                return self._result(
+                    outputs,
+                    evidence,
+                    "interrupted",
+                    evaluation.reason or "execution interrupted before completion",
+                    termination_cause="interrupted",
+                )
 
             if evaluation.decision is ArbiterDecision.RETRY:
+                if result.outcome in {
+                    WorkerOutcome.POLICY_DENIED,
+                    WorkerOutcome.CANCELLED,
+                    WorkerOutcome.DEADLINE_EXCEEDED,
+                }:
+                    return self._result(
+                        outputs,
+                        evidence,
+                        "failed",
+                        result.error or f"{result.outcome.value} is terminal",
+                        termination_cause=(
+                            "deadline_exceeded"
+                            if result.outcome is WorkerOutcome.DEADLINE_EXCEEDED
+                            else None
+                        ),
+                    )
+                if result.status is WorkerStatus.FAILED and not result.retryable:
+                    return self._result(
+                        outputs,
+                        evidence,
+                        "failed",
+                        result.error or "worker failure is not retryable",
+                    )
                 # max_retries counts retries after the initial attempt. Once
                 # this attempt reaches that limit, do not execute the worker
                 # one extra time merely to discover that another retry is denied.
@@ -167,21 +228,75 @@ class Arbiter:
     ) -> WorkerResult:
         result_status = {
             "complete": WorkerStatus.SUCCESS,
-            "interrupted": WorkerStatus.SUCCESS,
+            "interrupted": WorkerStatus.FAILED,
+            "partial": WorkerStatus.SUCCESS,
             "failed": WorkerStatus.FAILED,
             "cancelled": WorkerStatus.CANCELLED,
+            "policy_denied": WorkerStatus.FAILED,
         }[status]
         return WorkerResult(
             worker_id=self.worker_id,
             status=result_status,
             output=outputs,
             evidence=tuple(evidence),
+            artifacts=tuple(
+                artifact for result in outputs for artifact in result.artifacts
+            ),
+            observations=tuple(
+                observation for result in outputs for observation in result.observations
+            ),
+            provenance={
+                "implementation_id": self.worker_id,
+                "event_ids": list(
+                    dict.fromkeys(
+                        event_id
+                        for result in outputs
+                        for event_id in result.provenance.get("event_ids", [])
+                    )
+                ),
+                "attributes": {
+                    "contributors": [
+                        {
+                            "worker_id": result.worker_id,
+                            "provenance": dict(result.provenance),
+                        }
+                        for result in outputs
+                    ]
+                },
+            },
             error="" if result_status is not WorkerStatus.FAILED else reason,
+            error_code=(
+                "deadline_exceeded"
+                if termination_cause == "deadline_exceeded"
+                else "execution_interrupted"
+                if termination_cause == "interrupted"
+                else "policy_denied"
+                if status == "policy_denied"
+                else "execution_failed"
+                if result_status is WorkerStatus.FAILED
+                else ""
+            ),
+            outcome={
+                "complete": WorkerOutcome.SUCCEEDED,
+                "interrupted": WorkerOutcome.FAILED,
+                "partial": WorkerOutcome.PARTIALLY_SUCCEEDED,
+                "failed": (
+                    WorkerOutcome.DEADLINE_EXCEEDED
+                    if termination_cause == "deadline_exceeded"
+                    else WorkerOutcome.FAILED
+                ),
+                "cancelled": WorkerOutcome.CANCELLED,
+                "policy_denied": WorkerOutcome.POLICY_DENIED,
+            }[status],
             metadata={
                 "arbiter_id": self.worker_id,
                 "workers": [result.worker_id for result in outputs],
                 "reason": reason,
-                **({"continuation_pending": True} if status == "interrupted" else {}),
+                **(
+                    {"continuation_pending": True}
+                    if status in {"interrupted", "partial"}
+                    else {}
+                ),
                 **(
                     {"termination_cause": termination_cause}
                     if termination_cause is not None

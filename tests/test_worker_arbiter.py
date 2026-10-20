@@ -88,8 +88,12 @@ def test_nested_arbiter_interrupt_propagates_to_root() -> None:
     root = Arbiter([child], evaluate_root, worker_id="root")
     result = root.execute(context)
 
-    assert result.successful
+    assert result.status is WorkerStatus.FAILED
+    assert not result.successful
+    assert result.outcome.value == "failed"
+    assert result.error_code == "execution_interrupted"
     assert result.metadata["continuation_pending"] is True
+    assert result.metadata["termination_cause"] == "interrupted"
     assert root_evaluator_called is False
 
 

@@ -111,7 +111,7 @@ def test_duplicate_execution_id_is_rejected_without_replacing_prior_result(
         )
 
     observed = orchestrator.observe("stable-execution")
-    assert first.result.status is WorkerStatus.SUCCESS
+    assert first.result.status is WorkerStatus.FAILED
     assert len(worker.contexts) == 1
     assert observed.intent == original_intent
     assert observed.result is not None

@@ -148,7 +148,7 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 )
                 observed_payload = json.loads(observed.content[0].text)
                 assert observed_payload["execution_id"] == execution_id
-                assert observed_payload["status"] == "success"
+                assert observed_payload["status"] == "failed"
 
                 continued = await client.call_tool(
                     "loom_continue_execution",
