@@ -19,7 +19,13 @@ from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.orchestrator import Orchestrator
 from loom_ai.server import LoomServer
-from loom_ai.worker import CancellationToken, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    CancellationToken,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 
 class _RemoteWorker:
@@ -39,6 +45,16 @@ class _RemoteWorker:
             },
             evidence=({"type": "remote-worker-completed"},),
             error="deliberate remote worker failure" if failed else "",
+            error_code="temporary_remote_failure" if failed else "",
+            retryable=failed,
+            outcome=WorkerOutcome.FAILED if failed else WorkerOutcome.SUCCEEDED,
+            artifacts=({"artifact_id": "remote-artifact"},),
+            observations=({"kind": "remote-status", "value": "observed"},),
+            provenance={
+                "implementation_id": "remote-worker-implementation",
+                "event_ids": ["remote-event-1"],
+                "attributes": {"source": "fleet-test"},
+            },
             metadata=(
                 {"failure_category": "worker.execution_failed"} if failed else {}
             ),
@@ -138,6 +154,18 @@ def test_rest_observes_remote_worker_outcome_through_orchestrator_and_fleet(
         assert dispatched["metadata"]["fleet_execution_id"] == execution_id
         if worker_status is WorkerStatus.FAILED:
             assert dispatched["error"] == "deliberate remote worker failure"
+            assert dispatched["error_code"] == "temporary_remote_failure"
+            assert dispatched["retryable"] is True
+            assert dispatched["outcome"] == "failed"
+        else:
+            assert dispatched["outcome"] == "succeeded"
+            assert dispatched["retryable"] is False
+        assert dispatched["artifacts"] == [{"artifact_id": "remote-artifact"}]
+        assert dispatched["observations"] == [
+            {"kind": "remote-status", "value": "observed"}
+        ]
+        assert dispatched["provenance"]["event_ids"] == ["remote-event-1"]
+        assert dispatched["provenance"]["attributes"]["source"] == "fleet-test"
         task_id = dispatched["metadata"]["fleet_task_id"]
 
         request = Request(f"{base_url}/executions/{execution_id}")

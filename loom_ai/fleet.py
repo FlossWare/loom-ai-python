@@ -16,7 +16,13 @@ from uuid import uuid4
 
 from loom_ai.fleet_state import FleetStateError, FleetStateStore
 from loom_ai.intent import Intent
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    Worker,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 
 class FleetError(RuntimeError):
@@ -218,6 +224,12 @@ class FleetCoordinator:
                             "output": result_value.output,
                             "evidence": list(result_value.evidence),
                             "error": result_value.error,
+                            "error_code": result_value.error_code,
+                            "retryable": result_value.retryable,
+                            "outcome": result_value.outcome.value,
+                            "artifacts": list(result_value.artifacts),
+                            "observations": list(result_value.observations),
+                            "provenance": dict(result_value.provenance),
                             "metadata": dict(result_value.metadata),
                         }
                     ),
@@ -282,6 +294,16 @@ class FleetCoordinator:
                         output=raw_result.get("output"),
                         evidence=tuple(raw_result.get("evidence", ())),
                         error=raw_result.get("error", ""),
+                        error_code=raw_result.get("error_code", ""),
+                        retryable=raw_result.get("retryable", False),
+                        outcome=(
+                            WorkerOutcome(raw_result["outcome"])
+                            if raw_result.get("outcome") is not None
+                            else None
+                        ),
+                        artifacts=tuple(raw_result.get("artifacts", ())),
+                        observations=tuple(raw_result.get("observations", ())),
+                        provenance=dict(raw_result.get("provenance", {})),
                         metadata=dict(raw_result.get("metadata", {})),
                     )
                 )
@@ -630,8 +652,14 @@ class FleetCoordinator:
                     "worker_id": worker_id,
                     "generation": generation,
                     "status": result.status.value,
+                    "outcome": result.outcome.value,
                     "error": result.error,
+                    "error_code": result.error_code,
+                    "retryable": result.retryable,
                     "evidence": tuple(result.evidence),
+                    "artifacts": tuple(result.artifacts),
+                    "observations": tuple(result.observations),
+                    "provenance": dict(result.provenance),
                 },
             )
             if result.status is WorkerStatus.SUCCESS:
@@ -651,7 +679,13 @@ class FleetCoordinator:
                     attempt_history=history,
                 )
             elif (
-                retryable
+                result.outcome
+                not in {
+                    WorkerOutcome.POLICY_DENIED,
+                    WorkerOutcome.CANCELLED,
+                    WorkerOutcome.DEADLINE_EXCEEDED,
+                }
+                and retryable
                 and task.attempt < task.max_attempts
                 and not self._deadline_expired(task, now)
             ):
@@ -701,13 +735,14 @@ class FleetCoordinator:
                 worker_id=worker.worker_id,
                 status=WorkerStatus.FAILED,
                 error="worker invocation failed",
+                error_code="worker_invocation_failed",
+                retryable=True,
                 evidence=(
                     {
                         "type": "worker-exception",
                         "exception_type": type(exc).__name__,
                     },
                 ),
-                metadata={"retryable": True},
             )
         return self.submit_result(
             task_id,
@@ -715,7 +750,7 @@ class FleetCoordinator:
             lease_id=lease.lease_id,
             generation=lease.generation,
             result=result,
-            retryable=result.metadata.get("retryable") is True,
+            retryable=result.retryable,
         )
 
     def expire_leases(self) -> tuple[FleetTask, ...]:

@@ -206,3 +206,52 @@ def test_worker_http_cannot_submit_tasks_around_orchestrator() -> None:
     finally:
         server.close()
         thread.join(timeout=2)
+
+
+def test_http_rejects_conflicting_retryability_fields() -> None:
+    coordinator, server, thread, base_url = start_server()
+    agent = FleetWorkerAgent(
+        base_url,
+        "test-token",
+        RecordingWorker("worker-a", "unused"),
+        implementation_id="impl-a",
+        capabilities=["cap.a"],
+    )
+    try:
+        agent.register()
+        coordinator.submit_task(
+            Intent(
+                goal="reject conflicting retryability", intent_id="intent-retryable"
+            ),
+            execution_id="exec-retryable",
+            task_id="task-retryable",
+            required_capabilities=["cap.a"],
+        )
+        claimed = post_json(base_url, "/workers/worker-a/claim", {})
+        lease = claimed["task"]["lease"]
+
+        with pytest.raises(HTTPError) as error:
+            post_json(
+                base_url,
+                "/tasks/task-retryable/result",
+                {
+                    "worker_id": "worker-a",
+                    "lease_id": lease["lease_id"],
+                    "generation": lease["generation"],
+                    "retryable": True,
+                    "result": {
+                        "worker_id": "worker-a",
+                        "status": "failed",
+                        "outcome": "failed",
+                        "error": "permanent failure",
+                        "error_code": "permanent_failure",
+                        "retryable": False,
+                    },
+                },
+            )
+
+        assert error.value.code == 400
+        assert coordinator.observe_task("task-retryable").status.value == "running"
+    finally:
+        server.close()
+        thread.join(timeout=2)

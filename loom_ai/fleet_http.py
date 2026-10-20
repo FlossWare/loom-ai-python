@@ -22,7 +22,13 @@ from loom_ai.fleet import (
     WorkerNotRegisteredError,
 )
 from loom_ai.intent import Intent
-from loom_ai.worker import Worker, WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import (
+    Worker,
+    WorkerContext,
+    WorkerOutcome,
+    WorkerResult,
+    WorkerStatus,
+)
 
 MAX_FLEET_PAYLOAD_BYTES = 10 * 1024 * 1024
 
@@ -201,13 +207,18 @@ class FleetHTTPServer:
                         json.dumps(
                             _result_payload(result), ensure_ascii=False, allow_nan=False
                         )
+                        retryable = payload.get("retryable", result.retryable)
+                        if not isinstance(retryable, bool):
+                            raise ValueError("retryable must be a boolean")
+                        if retryable is not result.retryable:
+                            raise ValueError("retryable must match result.retryable")
                         task = owner.coordinator.submit_result(
                             task_id,
                             worker_id=_required_string(payload, "worker_id"),
                             lease_id=_required_string(payload, "lease_id"),
                             generation=int(payload["generation"]),
                             result=result,
-                            retryable=payload.get("retryable") is True,
+                            retryable=result.retryable,
                         )
                         self._send(HTTPStatus.OK, _task_payload(task))
                         return
@@ -346,7 +357,8 @@ class FleetWorkerAgent:
                 evidence=(
                     {"type": "worker-exception", "exception_type": type(exc).__name__},
                 ),
-                metadata={"retryable": True},
+                error_code="worker_invocation_failed",
+                retryable=True,
             )
         finally:
             stop_renewal.set()
@@ -360,7 +372,7 @@ class FleetWorkerAgent:
                 "worker_id": self.worker.worker_id,
                 "lease_id": lease["lease_id"],
                 "generation": lease["generation"],
-                "retryable": result.metadata.get("retryable") is True,
+                "retryable": result.retryable,
                 "result": _result_payload(result),
             },
         )
@@ -462,21 +474,62 @@ def _result_payload(result: WorkerResult) -> dict[str, Any]:
     return {
         "worker_id": result.worker_id,
         "status": result.status.value,
+        "outcome": result.outcome.value,
         "output": result.output,
         "evidence": [dict(item) for item in result.evidence],
         "error": result.error,
+        "error_code": result.error_code,
+        "retryable": result.retryable,
+        "artifacts": [dict(item) for item in result.artifacts],
+        "observations": [dict(item) for item in result.observations],
+        "provenance": dict(result.provenance),
         "metadata": dict(result.metadata),
     }
 
 
 def _result_from_payload(payload: dict[str, Any]) -> WorkerResult:
+    retryable = payload.get("retryable", False)
+    if not isinstance(retryable, bool):
+        raise ValueError("retryable must be a boolean")
+    evidence = payload.get("evidence", [])
+    artifacts = payload.get("artifacts", [])
+    observations = payload.get("observations", [])
+    metadata = payload.get("metadata", {})
+    provenance = payload.get("provenance", {})
+    if not isinstance(evidence, list) or not all(
+        isinstance(item, dict) for item in evidence
+    ):
+        raise ValueError("evidence must be an array of objects")
+    if not isinstance(artifacts, list) or not all(
+        isinstance(item, dict) for item in artifacts
+    ):
+        raise ValueError("artifacts must be an array of objects")
+    if not isinstance(observations, list) or not all(
+        isinstance(item, dict) for item in observations
+    ):
+        raise ValueError("observations must be an array of objects")
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata must be an object")
+    if not isinstance(provenance, dict):
+        raise ValueError("provenance must be an object")
+    error_code = payload.get("error_code", "")
+    if not isinstance(error_code, str):
+        raise ValueError("error_code must be a string")
+    outcome_value = payload.get("outcome")
+    outcome = WorkerOutcome(outcome_value) if outcome_value is not None else None
     return WorkerResult(
         worker_id=_required_string(payload, "worker_id"),
         status=WorkerStatus(_required_string(payload, "status")),
+        outcome=outcome,
         output=payload.get("output"),
-        evidence=tuple(payload.get("evidence", [])),
+        evidence=tuple(evidence),
         error=payload.get("error", ""),
-        metadata=payload.get("metadata", {}),
+        error_code=error_code,
+        retryable=retryable,
+        artifacts=tuple(artifacts),
+        observations=tuple(observations),
+        provenance=provenance,
+        metadata=metadata,
     )
 
 
