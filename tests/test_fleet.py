@@ -17,7 +17,6 @@ from loom_ai.fleet_state import FileFleetStateStore
 from loom_ai.intent import Intent
 from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 
-
 class FakeClock:
     def __init__(self) -> None:
         self.current = datetime(2030, 1, 1, tzinfo=timezone.utc)
@@ -27,7 +26,6 @@ class FakeClock:
 
     def advance(self, seconds: int) -> None:
         self.current += timedelta(seconds=seconds)
-
 
 class EchoWorker:
     def __init__(self, worker_id: str, output: str = "done") -> None:
@@ -50,11 +48,9 @@ class EchoWorker:
             ),
         )
 
-
 def setup_coordinator() -> tuple[FleetCoordinator, FakeClock]:
     clock = FakeClock()
     return FleetCoordinator(heartbeat_timeout_seconds=10, clock=clock), clock
-
 
 def test_capability_matching_leases_task_and_commits_result() -> None:
     coordinator, _ = setup_coordinator()
@@ -80,7 +76,6 @@ def test_capability_matching_leases_task_and_commits_result() -> None:
     assert completed.result.output == "done"
     assert completed.execution_id == task.execution_id
     assert completed.attempt_history[0]["worker_id"] == "worker-a"
-
 
 def test_expired_lease_is_requeued_and_stale_result_is_rejected() -> None:
     coordinator, clock = setup_coordinator()
@@ -121,7 +116,6 @@ def test_expired_lease_is_requeued_and_stale_result_is_rejected() -> None:
     assert second.lease.generation == 2
     assert second.lease.worker_id == "worker-b"
 
-
 def test_duplicate_submission_returns_existing_task_without_resetting_state() -> None:
     coordinator, _ = setup_coordinator()
     intent = Intent(goal="write report", intent_id="intent-1")
@@ -149,7 +143,6 @@ def test_duplicate_submission_returns_existing_task_without_resetting_state() ->
             idempotency_key="idem-1",
             required_capabilities=["report.write"],
         )
-
 
 def test_retryable_failure_requeues_with_prior_attempt_evidence() -> None:
     coordinator, _ = setup_coordinator()
@@ -198,7 +191,6 @@ def test_retryable_failure_requeues_with_prior_attempt_evidence() -> None:
     assert history["provenance"]["event_ids"] == ["event-retry-1"]
     assert coordinator.claim_task("worker-a").attempt == 2
 
-
 def test_terminal_result_is_immutable_under_duplicate_submission() -> None:
     coordinator, _ = setup_coordinator()
     coordinator.register_worker("worker-a", "impl-a", ["search.read"])
@@ -234,7 +226,6 @@ def test_terminal_result_is_immutable_under_duplicate_submission() -> None:
     assert duplicate.result == success
     assert duplicate.status is FleetTaskStatus.SUCCEEDED
 
-
 def test_stale_heartbeat_marks_worker_unhealthy() -> None:
     coordinator, clock = setup_coordinator()
     coordinator.register_worker("worker-a", "impl-a", ["search.read"])
@@ -244,7 +235,6 @@ def test_stale_heartbeat_marks_worker_unhealthy() -> None:
     assert coordinator.observe_worker("worker-a").lifecycle is WorkerLifecycle.UNHEALTHY
     with pytest.raises(WorkerNotRegisteredError, match="not available"):
         coordinator.heartbeat("worker-a")
-
 
 def test_draining_worker_receives_no_new_leases() -> None:
     coordinator, _ = setup_coordinator()
@@ -259,7 +249,6 @@ def test_draining_worker_receives_no_new_leases() -> None:
 
     assert coordinator.claim_task("worker-a") is None
     assert coordinator.observe_worker("worker-a").lifecycle is WorkerLifecycle.DRAINING
-
 
 def test_two_workers_claim_distinct_tasks_concurrently() -> None:
     coordinator, _ = setup_coordinator()
@@ -291,7 +280,6 @@ def test_two_workers_claim_distinct_tasks_concurrently() -> None:
     }
     assert len({claim.lease.lease_id for claim in claims if claim and claim.lease}) == 2
 
-
 def test_result_worker_identity_must_match_lease_holder() -> None:
     coordinator, _ = setup_coordinator()
     coordinator.register_worker("worker-a", "impl-a", ["search.read"])
@@ -314,7 +302,6 @@ def test_result_worker_identity_must_match_lease_holder() -> None:
                 worker_id="worker-b", status=WorkerStatus.SUCCESS, output="spoofed"
             ),
         )
-
 
 def test_task_deadline_rejects_late_result() -> None:
     coordinator, clock = setup_coordinator()
@@ -342,7 +329,6 @@ def test_task_deadline_rejects_late_result() -> None:
         )
     assert coordinator.observe_task("task-1").status is FleetTaskStatus.FAILED
 
-
 def test_idempotency_key_deduplicates_submissions_without_explicit_task_id() -> None:
     coordinator, _ = setup_coordinator()
     intent = Intent(goal="index a document", intent_id="intent-idempotent")
@@ -361,7 +347,6 @@ def test_idempotency_key_deduplicates_submissions_without_explicit_task_id() -> 
 
     assert duplicate == first
     assert len(coordinator._tasks) == 1
-
 
 @pytest.mark.parametrize(
     "changes",
@@ -394,7 +379,6 @@ def test_idempotency_key_rejects_changed_submission_payload(changes: dict) -> No
     with pytest.raises(FleetConflictError, match="idempotency key"):
         coordinator.submit_task(**payload)
 
-
 def test_duplicate_task_id_rejects_changed_capabilities_or_retry_policy() -> None:
     coordinator, _ = setup_coordinator()
     intent = Intent(goal="run tests", intent_id="intent-duplicate")
@@ -416,7 +400,6 @@ def test_duplicate_task_id_rejects_changed_capabilities_or_retry_policy() -> Non
             required_capabilities=["admin.run"],
             max_attempts=2,
         )
-
 
 def test_cancel_running_task_fences_late_worker_result() -> None:
     coordinator = FleetCoordinator()
@@ -453,7 +436,6 @@ def test_cancel_running_task_fences_late_worker_result() -> None:
     assert late.status is FleetTaskStatus.CANCELLED
     assert late.result is not None
     assert late.result.status is WorkerStatus.CANCELLED
-
 
 def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(
     tmp_path,
@@ -509,7 +491,6 @@ def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(
         "event_ids": ["event-1"],
         "attributes": {"region": "test"},
     }
-
 
 @pytest.mark.parametrize(
     ("worker_status", "outcome", "expected_status"),
