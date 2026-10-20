@@ -174,7 +174,10 @@ class PostgresExecutionStateStore:
                 raise ExecutionStateCorruptError(
                     f"durable state for execution {execution_id!r} is corrupt"
                 ) from exc
-        if not isinstance(payload, dict) or payload.get("representation_version") != stored_version:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("representation_version") != stored_version
+        ):
             raise ExecutionStateCorruptError(
                 f"durable state for execution {execution_id!r} is corrupt"
             )
