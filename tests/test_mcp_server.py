@@ -16,7 +16,7 @@ from mcp import Client, StdioServerParameters
 from loom_ai.arbiter import Arbiter, ArbiterDecision, WorkerEvaluation
 from loom_ai.execution_state import FileExecutionStateStore
 from loom_ai.server import LoomServer
-from loom_ai.worker import WorkerContext, WorkerResult, WorkerStatus
+from loom_ai.worker import WorkerContext, WorkerOutcome, WorkerResult, WorkerStatus
 from scripts.loom_mcp_server import LoomHTTPClient, create_server
 
 
@@ -29,6 +29,14 @@ class RecordingWorker:
             status=WorkerStatus.SUCCESS,
             output={"goal": context.intent.goal},
             evidence=({"source": "mcp-e2e"},),
+            outcome=WorkerOutcome.SUCCEEDED,
+            artifacts=({"artifact_id": "mcp-artifact"},),
+            observations=({"kind": "mcp", "value": "observed"},),
+            provenance={
+                "implementation_id": "mcp-test-worker",
+                "event_ids": ["mcp-event"],
+                "attributes": {"source": "mcp-e2e"},
+            },
         )
 
 
@@ -141,6 +149,8 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 submitted_payload = json.loads(submitted.content[0].text)
                 execution_id = submitted_payload["execution_id"]
                 assert execution_id
+                assert submitted_payload["outcome"] == "failed"
+                assert submitted_payload["result"]["outcome"] == "failed"
 
                 observed = await client.call_tool(
                     "loom_get_execution",
@@ -149,6 +159,17 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 observed_payload = json.loads(observed.content[0].text)
                 assert observed_payload["execution_id"] == execution_id
                 assert observed_payload["status"] == "failed"
+                assert observed_payload["outcome"] == "failed"
+                assert observed_payload["result"]["outcome"] == "failed"
+                assert observed_payload["result"]["artifacts"] == [
+                    {"artifact_id": "mcp-artifact"}
+                ]
+                assert observed_payload["result"]["observations"] == [
+                    {"kind": "mcp", "value": "observed"}
+                ]
+                assert observed_payload["result"]["provenance"]["event_ids"] == [
+                    "mcp-event"
+                ]
 
                 continued = await client.call_tool(
                     "loom_continue_execution",
@@ -157,6 +178,8 @@ def test_mcp_stdio_reaches_real_loom_http_boundary() -> None:
                 continued_payload = json.loads(continued.content[0].text)
                 assert continued_payload["execution_id"] == execution_id
                 assert continued_payload["status"] == "success"
+                assert continued_payload["outcome"] == "succeeded"
+                assert continued_payload["result"]["outcome"] == "succeeded"
 
                 evaluated = await client.call_tool(
                     "loom_record_evaluation",
