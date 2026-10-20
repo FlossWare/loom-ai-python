@@ -164,7 +164,8 @@ class PostgresFleetStateStore:
         version, snapshot = row
         if version != FLEET_STATE_VERSION:
             raise FleetStateCorruptError(
-                f"durable fleet snapshot for {coordinator_id!r} has an unsupported version"
+                f"durable fleet snapshot for {coordinator_id!r} "
+                "has an unsupported version"
             )
         if isinstance(snapshot, str):
             try:
