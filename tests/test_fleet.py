@@ -172,7 +172,7 @@ def test_retryable_failure_requeues_with_prior_attempt_evidence() -> None:
             worker_id="worker-a",
             status=WorkerStatus.FAILED,
             error="temporary runner error",
-            metadata={"retryable": True},
+            retryable=True,
         ),
         retryable=True,
     )
