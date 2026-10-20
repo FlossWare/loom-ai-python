@@ -55,6 +55,7 @@ from loom_ai.pipeline import (
     StageEvaluation,
 )
 from loom_ai.postgres_execution_state import PostgresExecutionStateStore
+from loom_ai.postgres_fleet_state import PostgresFleetStateStore
 from loom_ai.server import LoomServer
 from loom_ai.worker import (
     CancellationToken,
@@ -113,6 +114,7 @@ __all__ = [
     "Orchestrator",
     "OrchestratorSubmission",
     "PostgresExecutionStateStore",
+    "PostgresFleetStateStore",
     "SequentialArbitrationPipeline",
     "StageEvaluation",
     "ValidatedWorkerConfiguration",
