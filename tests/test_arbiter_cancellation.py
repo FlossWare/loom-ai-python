@@ -121,6 +121,7 @@ def test_worker_result_maps_deadline_and_interruption_to_canonical_outcomes() ->
     interrupted = WorkerResult(
         worker_id="interrupted-worker",
         status=WorkerStatus.SUCCESS,
+        outcome=WorkerOutcome.PARTIALLY_SUCCEEDED,
         metadata={"continuation_pending": True},
     )
 
@@ -240,3 +241,15 @@ def test_arbiter_preserves_artifacts_observations_and_provenance() -> None:
     assert result.provenance["event_ids"] == ["event-1"]
     contributor = result.provenance["attributes"]["contributors"][0]
     assert contributor["provenance"]["attributes"]["source"] == "test"
+
+
+
+def test_worker_result_requires_explicit_outcome_for_pending_continuation() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="requires an explicit canonical outcome"):
+        WorkerResult(
+            worker_id="pending-worker",
+            status=WorkerStatus.SUCCESS,
+            metadata={"continuation_pending": True},
+        )
