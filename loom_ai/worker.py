@@ -161,7 +161,9 @@ class WorkerResult:
                     else WorkerOutcome.FAILED
                 )
             elif self.metadata.get("continuation_pending") is True:
-                outcome = WorkerOutcome.PARTIALLY_SUCCEEDED
+                raise ValueError(
+                    "continuation_pending requires an explicit canonical outcome"
+                )
             else:
                 outcome = WorkerOutcome.SUCCEEDED
             object.__setattr__(self, "outcome", outcome)
