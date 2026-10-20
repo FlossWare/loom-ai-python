@@ -119,3 +119,33 @@ def test_postgres_fleet_store_validates_schema_and_closes_pool():
     pool = FakePool()
     PostgresFleetStateStore(pool).close()
     assert pool.closed
+
+
+def test_live_postgres_fleet_snapshot_recovery_when_configured():
+    import os
+    from uuid import uuid4
+
+    dsn = os.getenv("FLOSSWARE_LOOM_FLEET_POSTGRES_DSN")
+    if not dsn:
+        pytest.skip("set FLOSSWARE_LOOM_FLEET_POSTGRES_DSN for live fleet recovery")
+
+    coordinator_id = f"loom-fleet-recovery-{uuid4().hex}"
+    expected = {
+        "workers": [],
+        "tasks": [{"task_id": "task-live", "status": "queued"}],
+    }
+    store = PostgresFleetStateStore.connect(dsn)
+    try:
+        store.initialize()
+        store.create(coordinator_id, expected)
+        assert store.load(coordinator_id) == expected
+        replacement = {"workers": [], "tasks": []}
+        store.save(coordinator_id, replacement)
+        assert store.load(coordinator_id) == replacement
+    finally:
+        with store.pool.connection() as connection:
+            connection.execute(
+                "DELETE FROM loom_runtime.fleet_states WHERE coordinator_id = %s",
+                (coordinator_id,),
+            )
+        store.close()
