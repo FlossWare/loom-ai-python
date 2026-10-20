@@ -439,7 +439,6 @@ def test_cancel_running_task_fences_late_worker_result() -> None:
     assert late.result.status is WorkerStatus.CANCELLED
 
 
-
 def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(
     tmp_path,
 ) -> None:
@@ -494,7 +493,6 @@ def test_canonical_worker_result_fields_survive_fleet_coordinator_restart(
         "event_ids": ["event-1"],
         "attributes": {"region": "test"},
     }
-
 
 
 @pytest.mark.parametrize(
