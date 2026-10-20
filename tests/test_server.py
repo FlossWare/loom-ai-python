@@ -316,3 +316,83 @@ def test_server_cli_keeps_durability_opt_in(monkeypatch) -> None:
     server_module.main()
 
     assert captured["durable"] is False
+
+
+def test_server_cli_can_enable_postgres_execution_state(monkeypatch) -> None:
+    from loom_ai import server as server_module
+
+    class FakePostgresStore:
+        def __init__(self):
+            self.initialized = False
+            self.closed = False
+
+        def initialize(self):
+            self.initialized = True
+
+        def close(self):
+            self.closed = True
+
+    store = FakePostgresStore()
+    captured = {}
+
+    def connect(dsn, *, schema):
+        captured["dsn"] = dsn
+        captured["schema"] = schema
+        return store
+
+    def stop_after_configuration(server) -> None:
+        captured["durable"] = server.orchestrator.durable_enabled
+        captured["store"] = server.execution_store
+
+    monkeypatch.setattr(
+        server_module.PostgresExecutionStateStore, "connect", connect
+    )
+    monkeypatch.setattr(
+        server_module.LoomServer, "serve_forever", stop_after_configuration
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["loom-server", "--postgres-dsn", "postgresql://test", "--postgres-schema", "test_runtime"],
+    )
+
+    server_module.main()
+
+    assert captured == {
+        "dsn": "postgresql://test",
+        "schema": "test_runtime",
+        "durable": True,
+        "store": store,
+    }
+    assert store.initialized is True
+    assert store.closed is True
+
+
+def test_server_cli_uses_postgres_environment_when_no_state_dir(monkeypatch) -> None:
+    from loom_ai import server as server_module
+
+    class FakePostgresStore:
+        def initialize(self):
+            pass
+
+        def close(self):
+            pass
+
+    captured = {}
+
+    def connect(dsn, *, schema):
+        captured["dsn"] = dsn
+        return FakePostgresStore()
+
+    monkeypatch.setattr(
+        server_module.PostgresExecutionStateStore, "connect", connect
+    )
+    monkeypatch.setattr(
+        server_module.LoomServer, "serve_forever", lambda _server: None
+    )
+    monkeypatch.setenv("FLOSSWARE_LOOM_POSTGRES_DSN", "postgresql://environment")
+    monkeypatch.setattr(sys, "argv", ["loom-server"])
+
+    server_module.main()
+
+    assert captured["dsn"] == "postgresql://environment"
