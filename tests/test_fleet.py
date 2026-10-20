@@ -172,14 +172,30 @@ def test_retryable_failure_requeues_with_prior_attempt_evidence() -> None:
             worker_id="worker-a",
             status=WorkerStatus.FAILED,
             error="temporary runner error",
+            error_code="temporary_runner_error",
             retryable=True,
+            evidence=({"evidence_id": "e-1"},),
+            artifacts=({"artifact_id": "a-1"},),
+            observations=({"kind": "retry", "value": "temporary"},),
+            provenance={
+                "implementation_id": "test-runner",
+                "event_ids": ["event-retry-1"],
+                "attributes": {"attempt": 1},
+            },
         ),
         retryable=True,
     )
 
     assert requeued.status is FleetTaskStatus.QUEUED
     assert requeued.result is None
-    assert requeued.attempt_history[0]["error"] == "temporary runner error"
+    history = requeued.attempt_history[0]
+    assert history["error"] == "temporary runner error"
+    assert history["outcome"] == "failed"
+    assert history["error_code"] == "temporary_runner_error"
+    assert history["retryable"] is True
+    assert history["artifacts"] == ({"artifact_id": "a-1"},)
+    assert history["observations"] == ({"kind": "retry", "value": "temporary"},)
+    assert history["provenance"]["event_ids"] == ["event-retry-1"]
     assert coordinator.claim_task("worker-a").attempt == 2
 
 
